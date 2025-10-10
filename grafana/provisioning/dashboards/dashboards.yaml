@@ -1,0 +1,15 @@
+# ---------------------------------------
+# provisioning/dashboards/dashboards.yml
+# ---------------------------------------
+# Apunta a una carpeta de dashboards JSON (opcional). Puedes colocar JSONs en ./dashboards
+
+---
+apiVersion: 1
+providers:
+  - name: "local-dashboards"
+    orgId: 1
+    folder: "Local"
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

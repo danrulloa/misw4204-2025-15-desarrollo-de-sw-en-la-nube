@@ -1,0 +1,30 @@
+# ---------------------------------------
+# provisioning/datasources/datasources.yml
+# ---------------------------------------
+# Provisiona datasources en Grafana para Prometheus, Loki y Tempo.
+
+---
+apiVersion: 1
+
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+  - name: Tempo
+    orgId: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
