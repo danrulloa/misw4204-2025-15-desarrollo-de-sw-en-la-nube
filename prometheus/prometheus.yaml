@@ -1,0 +1,22 @@
+# ---------------------------------------
+# prometheus/prometheus.yml
+# ---------------------------------------
+# Scrapea a sí mismo y a exporters/servicios que expongan /metrics.
+# Agrega aquí tus targets (API, workers) cuando instrumentes con prometheus_client.
+
+# Prometheus config
+---
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # Ejemplo: añade tu API cuando exponga /metrics
+  # - job_name: api
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["api:8000"]
