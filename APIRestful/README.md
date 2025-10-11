@@ -5,15 +5,42 @@ API REST para la gestión de videos y votaciones de jugadores de baloncesto.
 ## Requisitos
 
 - Python 3.12+
+- Docker
 - FastAPI
 - Uvicorn
 
-## Instalación
+## Ejecución con Docker
+
+**Nota:** El archivo `docker-compose.yml` está en la raíz del proyecto.
+
+1. Desde la raíz del proyecto, construir e iniciar el contenedor:
+```bash
+cd ..
+docker-compose up --build
+```
+
+2. La API estará disponible en:
+- API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+3. Detener el contenedor:
+```bash
+docker-compose down
+```
+
+4. Ver logs:
+```bash
+docker-compose logs -f api
+```
+
+## Ejecución Local (Desarrollo)
 
 1. Crear entorno virtual:
 ```bash
 python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
+source venv/bin/activate  # En Mac
+source venv\Scripts\activate  # En Windows 
 ```
 
 2. Instalar dependencias:
@@ -26,10 +53,9 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-## Ejecución
-
+4. Ejecutar la aplicación:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## Documentación
@@ -41,7 +67,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```
 APIRestful/
-├── app/                    # Código fuente de la aplicación
+├── app/                   # Código fuente de la aplicación
 │   ├── api/               # Endpoints (routers)
 │   ├── schemas/           # Modelos Pydantic (request/response)
 │   ├── services/          # Lógica de negocio
