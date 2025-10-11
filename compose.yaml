@@ -20,25 +20,6 @@ services:
       - proxy_temp:/var/tmp/nginx
       - proxy_logs:/var/log/nginx
     restart: unless-stopped
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    container_name: keycloak
-    command: >
-      start-dev
-      --http-port=8090
-      --hostname-strict=false
-      --hostname=localhost
-      --import-realm
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-      KC_HEALTH_ENABLED: "true"
-      KC_METRICS_ENABLED: "true"
-    volumes:
-      - ./keycloak/keycloak-realm.json:/opt/keycloak/data/import/keycloak-realm.json:ro
-    ports:
-      - "8090:8090"
   
   redis:
     image: redis:7-alpine
