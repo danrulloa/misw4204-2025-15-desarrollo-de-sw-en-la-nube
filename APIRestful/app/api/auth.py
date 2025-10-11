@@ -44,7 +44,7 @@ async def signup(user_data: UserSignupRequest) -> UserSignupResponse:
     # TODO: Implementar cuando se tenga DB y auth
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint pendiente de implementación. Esperando decisiones de DB y Keycloak."
+        detail="Endpoint pendiente de implementación. Esperando decisiones de DB."
     )
 
 
