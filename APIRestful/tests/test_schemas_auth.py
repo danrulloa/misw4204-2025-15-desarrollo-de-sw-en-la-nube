@@ -18,9 +18,9 @@ class TestUserSignupRequest:
     def test_valid_signup_data(self, valid_user_signup_data):
         """Test con datos válidos"""
         user = UserSignupRequest(**valid_user_signup_data)
-        assert user.first_name == "John"
-        assert user.last_name == "Doe"
-        assert user.email == "john.doe@example.com"
+        assert user.first_name == "Pedro"
+        assert user.last_name == "Gomez"
+        assert user.email == "a@b.com"
         assert user.city == "Bogotá"
         assert user.country == "Colombia"
     
@@ -73,8 +73,8 @@ class TestUserLoginRequest:
     def test_valid_login_data(self, valid_user_login_data):
         """Test con datos válidos"""
         login = UserLoginRequest(**valid_user_login_data)
-        assert login.email == "john.doe@example.com"
-        assert login.password == "SecurePass123"
+        assert login.email == "a@b.com"
+        assert login.password == "123Qwweasd"
     
     def test_email_lowercase_conversion(self):
         """Test que el email se convierte a minúsculas"""
