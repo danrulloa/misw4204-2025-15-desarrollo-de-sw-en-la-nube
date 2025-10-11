@@ -1,4 +1,15 @@
 services:
+  api:
+    build:
+      context: ./APIRestful
+      dockerfile: Dockerfile
+    container_name: anb_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./APIRestful/storage:/app/storage
+    restart: unless-stopped
+  
   nginx:
     image: nginx:1.25-alpine
     container_name: nginx-proxy
