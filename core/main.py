@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from contextlib import asynccontextmanager
 from app.config import settings
+from app.database import Base, engine
 from app.exceptions import (
     APIException,
     api_exception_handler,
@@ -9,7 +11,22 @@ from app.exceptions import (
     general_exception_handler,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Gestiona el ciclo de vida de la aplicación.
+    Se ejecuta al iniciar la aplicación para crear las tablas de la base de datos
+    y al finalizar para realizar tareas de limpieza si es necesario.
+    """
+    # Crear todas las tablas definidas en los modelos al iniciar la aplicación
+    Base.metadata.create_all(bind=engine)
+    yield
+    # Aquí se pueden agregar tareas de limpieza al cerrar la aplicación
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     version=settings.API_VERSION,
     description="API REST para la gestión de videos y votaciones de jugadores de baloncesto",
