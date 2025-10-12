@@ -2,15 +2,12 @@
   "rabbit_version": "3.10.14",
   "name": "definitions",
   "vhosts": [
-    {
-      "name": "/"
-    }
+    { "name": "/" }
   ],
   "users": [
     {
       "name": "rabbit",
-      "password_hash": "",
-      "hashing_algorithm": "",
+      "password": "rabbitpass",
       "tags": "administrator"
     }
   ],

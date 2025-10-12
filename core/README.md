@@ -69,7 +69,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ## Estructura del Proyecto
 
 ```
-APIRestful/
+core/
 ├── app/                   # Código fuente de la aplicación
 │   ├── api/               # Endpoints (routers)
 │   │   ├── auth.py        # Endpoints de autenticación

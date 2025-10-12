@@ -1,69 +1,167 @@
 name: anb-cloud
 
 services:
-  api:
+  anb_api:
     build:
-      context: ./APIRestful
+      context: ./core
       dockerfile: Dockerfile
     container_name: anb_api
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"                     
+    env_file: [.env]
+    environment:
+      - APP_ENV=${APP_ENV:-production}
     volumes:
-      - ./APIRestful/storage:/app/storage
+      - ./core/storage:/app/storage
     restart: unless-stopped
-  
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/health'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s 
+    depends_on:
+      anb-auth-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - internal
+
+  anb-auth-service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    container_name: anb-auth-service
+    expose:
+      - "8000"                  
+    env_file: [.env]
+    environment:
+      - ENV=${APP_ENV:-development}
+      - PORT=8000
+    volumes:
+      - ./auth_service:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
+    depends_on:
+      anb-auth-db:
+        condition: service_healthy
+    networks:
+      - internal
+
   nginx:
     image: nginx:1.25-alpine
     container_name: nginx-proxy
     ports:
-      - "8080:80"
+      - "8080:80"                
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - proxy_temp:/var/tmp/nginx
-      - proxy_logs:/var/log/nginx
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /var/tmp/nginx
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
-  
+    depends_on:
+      anb_api:
+        condition: service_healthy
+      anb-auth-service:
+        condition: service_healthy
+    networks:
+      - internal
+      - public
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
   rabbitmq:
     image: rabbitmq:3.10-management
     container_name: rabbitmq
     environment:
-      - RABBITMQ_DEFAULT_USER=rabbit
-      - RABBITMQ_DEFAULT_PASS=rabbitpass
-      - RABBITMQ_LOAD_DEFINITIONS=1
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-rabbit}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-rabbitpass}
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_management load_definitions "/etc/rabbitmq/definitions.json"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   worker:
-    build: ./worker
+    build:
+      context: ./worker
     container_name: video-worker
+    env_file: [.env]
     environment:
-      - CELERY_BROKER_URL=amqp://rabbit:rabbitpass@rabbitmq:5672//
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=rpc://
+      - APP_ENV=${APP_ENV:-production}
     volumes:
       - ./worker:/app
+    command: celery -A celery_app worker --loglevel=INFO
+    restart: unless-stopped
     depends_on:
-      - rabbitmq
-    command: celery -A celery_app worker --loglevel=info
+      rabbitmq:
+        condition: service_healthy
+      anb_api:
+        condition: service_started
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
-  postgres:
+  anb-auth-db:
     image: postgres:15-alpine
-    container_name: postgres
+    container_name: anb-auth-db
+    restart: unless-stopped
+    env_file: [.env]
     environment:
-      - POSTGRES_DB=anb
-      - POSTGRES_USER=anb_user
-      - POSTGRES_PASSWORD=anb_pass
+      - POSTGRES_DB=${POSTGRES_DB:-anb_auth}
+      - POSTGRES_USER=${POSTGRES_USER:-anb_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - TZ=America/Bogota
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB:-anb_auth} -h 127.0.0.1 -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+networks:
+  public:
+    name: anb-public
+  internal:
+    name: anb-internal
+    internal: true
 
 volumes:
-  proxy_temp:
-  proxy_logs:
   rabbitmq_data:
   postgres_data:
