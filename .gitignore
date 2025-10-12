@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Backups y carpetas legacy del proyecto
+APIRestful_backup_legacy/
+*_backup/
+*_legacy/
+*_old/
