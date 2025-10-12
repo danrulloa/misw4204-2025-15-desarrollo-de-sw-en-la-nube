@@ -2,8 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, engine  # <-- engine debe ser create_async_engine
 from app.exceptions import (
     APIException,
     api_exception_handler,
@@ -16,13 +17,16 @@ from app.exceptions import (
 async def lifespan(app: FastAPI):
     """
     Gestiona el ciclo de vida de la aplicación.
-    Se ejecuta al iniciar la aplicación para crear las tablas de la base de datos
-    y al finalizar para realizar tareas de limpieza si es necesario.
+    Crea las tablas al iniciar y libera recursos al cerrar.
     """
-    # Crear todas las tablas definidas en los modelos al iniciar la aplicación
-    Base.metadata.create_all(bind=engine)
+    # Crear tablas de forma ASÍNCRONA
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     yield
-    # Aquí se pueden agregar tareas de limpieza al cerrar la aplicación
+
+    # Cerrar el pool/engine asíncrono al apagar
+    await engine.dispose()
 
 
 app = FastAPI(
@@ -31,7 +35,7 @@ app = FastAPI(
     version=settings.API_VERSION,
     description="API REST para la gestión de videos y votaciones de jugadores de baloncesto",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
 
 # Configuración de CORS
@@ -49,7 +53,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Importar y registrar routers
-from app.api import auth, videos, public
+from app.api import auth, videos, public  # noqa: E402
 
 app.include_router(auth.router)
 app.include_router(videos.router)
@@ -62,7 +66,7 @@ async def root():
     return {
         "message": "ANB Rising Stars Showcase API",
         "version": settings.API_VERSION,
-        "status": "running"
+        "status": "running",
     }
 
 
