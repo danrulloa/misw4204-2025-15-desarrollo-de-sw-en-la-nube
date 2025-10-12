@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "/app/storage/uploads"
     PROCESSED_DIR: str = "/app/storage/processed"
     
+    # Configuración de base de datos
+    DATABASE_URL: str = "postgresql://anb_user:anb_pass@postgres:5432/anb"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
