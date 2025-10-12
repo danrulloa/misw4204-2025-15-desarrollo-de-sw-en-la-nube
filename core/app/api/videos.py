@@ -3,8 +3,14 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Response, Form, Depends
+from sqlalchemy.orm import Session
 import os, uuid
+
+from app.config import settings                     # ⬅️ usar settings
+from app.database import get_db                     # ⬅️ tu SessionLocal
+from app.models.video import Video, VideoStatus     # ⬅️ modelo real
+from app.services.mq.rabbit import RabbitPublisher  # ⬅️ publisher a Rabbit
 from typing import List
 from app.schemas.video import (
     VideoUploadResponse,
@@ -18,36 +24,23 @@ from app.services.storage import get_storage
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 
-
 @router.post(
     "/upload",
     status_code=status.HTTP_201_CREATED,
     response_model=VideoUploadResponse,
     summary="Subir video",
     description="Permite a un jugador subir un video demostrando sus habilidades",
-    responses={
-        201: {
-            "description": "Video subido exitosamente, procesamiento iniciado",
-            "model": VideoUploadResponse
-        },
-        400: {
-            "description": "Error en el archivo (tipo o tamaño inválido)",
-            "model": ErrorResponse
-        },
-        401: {
-            "description": "Falta de autenticación",
-            "model": ErrorResponse
-        }
-    }
 )
 async def upload_video(
+    response: Response,
     video_file: UploadFile = File(..., description="Archivo de video (MP4, máximo 100MB)"),
     title: str = Form(..., description="Título descriptivo del video"),
+    db: Session = Depends(get_db),                       # ⬅️ inyecta sesión
 ) -> VideoUploadResponse:
     # --- Validación extensión ---
     _, ext = os.path.splitext(video_file.filename or "")
     ext = (ext or "").lower().lstrip(".")
-    allowed = set(x.lower() for x in ALLOWED_VIDEO_FORMATS)
+    allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
     if ext not in allowed:
         raise HTTPException(status_code=400, detail=f"Formato no permitido. Usa: {', '.join(sorted(allowed)).upper()}.")
 
@@ -55,26 +48,65 @@ async def upload_video(
     video_file.file.seek(0, os.SEEK_END)
     size_bytes = video_file.file.tell()
     video_file.file.seek(0)
-    if size_bytes > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise HTTPException(status_code=400, detail=f"El archivo supera {MAX_UPLOAD_SIZE_MB} MB.")
+    if size_bytes > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.")
 
-    # --- IDs ---
-    video_id = uuid.uuid4().hex
-    task_id = uuid.uuid4().hex  # placeholder
-
-    # --- Guardado por contrato ---
+    # --- Guardar archivo (contrato de storage) ---
     storage = get_storage()
-    filename = f"{video_id}.{ext}" if ext else (video_file.filename or video_id)
+    filename = f"{uuid.uuid4().hex}.{ext}" if ext else (video_file.filename or uuid.uuid4().hex)
     saved_path = storage.save(video_file.file, filename, video_file.content_type or "application/octet-stream")
 
-    print(f"[upload_video] saved_path={saved_path}")  # ver en consola
+    # --- Crear registro en BD y obtener video_id real ---
+    size_mb = round(size_bytes / (1024 * 1024), 2)
+    video = Video(
+        title=title,
+        original_filename=video_file.filename or filename,
+        original_path=saved_path,               # ruta que guardaste
+        status=VideoStatus.uploaded,
+        file_size_mb=size_mb,
+        # user_id= current_user.id  # cuando exista auth
+    )
+    db.add(video)
+    db.commit()
+    db.refresh(video)                           # ⬅️ ahora video.id está disponible
+
+    # --- correlation_id (lo usamos como task_id por ahora) ---
+    correlation_id = f"req-{uuid.uuid4().hex[:12]}"
+
+    # --- Path que verá el worker (si montas el volumen en /mnt/uploads) ---
+    worker_prefix = os.getenv("WORKER_INPUT_PREFIX")  # ej: /mnt/uploads
+    if worker_prefix:
+        # mapear .../storage/uploads/... -> /mnt/uploads/...
+        norm = saved_path.replace("\\", "/")
+        parts = norm.split("/storage/uploads", 1)
+        input_path = worker_prefix + (parts[1] if len(parts) > 1 else "")
+    else:
+        input_path = saved_path
+
+    # --- Publicar mensaje a RabbitMQ (exchange 'video') ---
+    try:
+        pub = RabbitPublisher()
+        pub.publish_video({
+            "video_id": str(video.id),        # lo que el worker usará para actualizar BD
+            "input_path": input_path,
+            "correlation_id": correlation_id,
+        })
+        pub.close()
+    except Exception:
+        # si el publish falla, marca el video como failed
+        video.status = VideoStatus.failed
+        db.add(video); db.commit()
+        raise HTTPException(status_code=502, detail="No se pudo encolar el procesamiento del video")
+
+    # Header Location (opcional)
+    response.headers["Location"] = f"/api/videos/{video.id}"
 
     return VideoUploadResponse(
         message="Video subido correctamente. Procesamiento en curso.",
-        video_id=video_id,
-        task_id=task_id,
+        video_id=str(video.id),          # ⬅️ id real de BD
+        task_id=correlation_id,          # ⬅️ usamos correlation como task_id
     )
-
 
 @router.get(
     "",

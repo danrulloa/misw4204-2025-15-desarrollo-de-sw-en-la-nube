@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     PROCESSED_DIR: str = "processed"
 
+    # Configuración de base de datos
+    DATABASE_URL: str = "postgresql://anb_user:anb_pass@anb-auth-db:5432/anb_auth"
+    
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
 
     model_config = SettingsConfigDict(
