@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
-from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Literal
+import os
 
 
 class Settings(BaseSettings):
@@ -15,14 +16,23 @@ class Settings(BaseSettings):
     ALLOWED_VIDEO_FORMATS: List[str] = ["mp4", "avi", "mov"]
     MIN_VIDEO_DURATION_SECONDS: int = 20
     MAX_VIDEO_DURATION_SECONDS: int = 60
-    
-    # Rutas de almacenamiento
-    UPLOAD_DIR: str = "/app/storage/uploads"
-    PROCESSED_DIR: str = "/app/storage/processed"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    UPLOAD_DIR: str = "uploads"
+    PROCESSED_DIR: str = "processed"
+
+    # 👉 Aquí el tipo:
+    STORAGE_BACKEND: Literal["local", "s3"] = "local"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=True,
+    )
 
 
 settings = Settings()
+
+ALLOWED_VIDEO_FORMATS = settings.ALLOWED_VIDEO_FORMATS
+MAX_UPLOAD_SIZE_MB   = settings.MAX_UPLOAD_SIZE_MB 
+STORAGE_BACKEND      = settings.STORAGE_BACKEND
+UPLOAD_DIR           = settings.UPLOAD_DIR
+PROCESSED_DIR        = settings.PROCESSED_DIR

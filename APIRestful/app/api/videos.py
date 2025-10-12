@@ -4,6 +4,7 @@ Endpoints para subir, listar, consultar y eliminar videos
 """
 
 from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form
+import os, uuid
 from typing import List
 from app.schemas.video import (
     VideoUploadResponse,
@@ -12,6 +13,8 @@ from app.schemas.video import (
     VideoDeleteResponse
 )
 from app.schemas.common import ErrorResponse
+from app.config import ALLOWED_VIDEO_FORMATS, MAX_UPLOAD_SIZE_MB
+from app.services.storage import get_storage
 
 router = APIRouter(prefix="/api/videos", tags=["Videos"])
 
@@ -39,26 +42,37 @@ router = APIRouter(prefix="/api/videos", tags=["Videos"])
 )
 async def upload_video(
     video_file: UploadFile = File(..., description="Archivo de video (MP4, máximo 100MB)"),
-    title: str = Form(..., description="Título descriptivo del video")
+    title: str = Form(..., description="Título descriptivo del video"),
 ) -> VideoUploadResponse:
-    """
-    Sube un video de habilidades de baloncesto.
-    
-    Validaciones:
-    - Formato: MP4, AVI, MOV
-    - Tamaño máximo: 100MB
-    - Duración: 20-60 segundos
-    
-    El video será procesado en segundo plano:
-    - Recorte a 30 segundos máximo
-    - Ajuste a resolución 720p (16:9)
-    - Marca de agua ANB
-    - Eliminación de audio
-    """
-    # TODO: Implementar cuando se tenga storage y broker
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint pendiente de implementación. Esperando decisiones de storage y broker."
+    # --- Validación extensión ---
+    _, ext = os.path.splitext(video_file.filename or "")
+    ext = (ext or "").lower().lstrip(".")
+    allowed = set(x.lower() for x in ALLOWED_VIDEO_FORMATS)
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Formato no permitido. Usa: {', '.join(sorted(allowed)).upper()}.")
+
+    # --- Validación tamaño ---
+    video_file.file.seek(0, os.SEEK_END)
+    size_bytes = video_file.file.tell()
+    video_file.file.seek(0)
+    if size_bytes > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"El archivo supera {MAX_UPLOAD_SIZE_MB} MB.")
+
+    # --- IDs ---
+    video_id = uuid.uuid4().hex
+    task_id = uuid.uuid4().hex  # placeholder
+
+    # --- Guardado por contrato ---
+    storage = get_storage()
+    filename = f"{video_id}.{ext}" if ext else (video_file.filename or video_id)
+    saved_path = storage.save(video_file.file, filename, video_file.content_type or "application/octet-stream")
+
+    print(f"[upload_video] saved_path={saved_path}")  # ver en consola
+
+    return VideoUploadResponse(
+        message="Video subido correctamente. Procesamiento en curso.",
+        video_id=video_id,
+        task_id=task_id,
     )
 
 
