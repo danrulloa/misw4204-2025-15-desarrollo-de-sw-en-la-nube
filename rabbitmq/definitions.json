@@ -1,0 +1,114 @@
+{
+  "rabbit_version": "3.10.14",
+  "name": "definitions",
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "name": "rabbit",
+      "password_hash": "",
+      "hashing_algorithm": "",
+      "tags": "administrator"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "rabbit",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "video",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "video-dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "video-retry",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "video_tasks",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "video-dlx",
+        "x-dead-letter-routing-key": "video.dlq"
+      }
+    },
+    {
+      "name": "video_dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "video_retry_60s",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 60000,
+        "x-dead-letter-exchange": "video",
+        "x-dead-letter-routing-key": "video"
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "video",
+      "vhost": "/",
+      "destination": "video_tasks",
+      "destination_type": "queue",
+      "routing_key": "video",
+      "arguments": {}
+    },
+    {
+      "source": "video-dlx",
+      "vhost": "/",
+      "destination": "video_dlq",
+      "destination_type": "queue",
+      "routing_key": "video.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "video-retry",
+      "vhost": "/",
+      "destination": "video_retry_60s",
+      "destination_type": "queue",
+      "routing_key": "video.retry.60",
+      "arguments": {}
+    }
+  ],
+  "policies": [],
+  "parameters": [],
+  "global_parameters": []
+}

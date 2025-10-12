@@ -1,3 +1,5 @@
+name: anb-cloud
+
 services:
   api:
     build:
@@ -21,24 +23,30 @@ services:
       - proxy_logs:/var/log/nginx
     restart: unless-stopped
   
-  redis:
-    image: redis:7-alpine
-    container_name: redis
+  rabbitmq:
+    image: rabbitmq:3.10-management
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbit
+      - RABBITMQ_DEFAULT_PASS=rabbitpass
+      - RABBITMQ_LOAD_DEFINITIONS=1
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
     volumes:
-      - redis_data:/data
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
 
   worker:
     build: ./worker
     container_name: video-worker
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://rabbit:rabbitpass@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     volumes:
       - ./worker:/app
     depends_on:
-      - redis
+      - rabbitmq
     command: celery -A celery_app worker --loglevel=info
 
   postgres:
@@ -57,5 +65,5 @@ services:
 volumes:
   proxy_temp:
   proxy_logs:
-  redis_data:
+  rabbitmq_data:
   postgres_data:
