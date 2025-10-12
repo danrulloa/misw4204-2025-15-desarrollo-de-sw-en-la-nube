@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - ENV=development
+      - PORT=8000
+    env_file:
+      - .env
+    depends_on:
+      - auth-db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  auth-db:
+    image: postgres:15
+    container_name: auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - auth_pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+  auth_pgdata:
+
