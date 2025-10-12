@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     PROCESSED_DIR: str = "processed"
 
-    # 👉 Aquí el tipo:
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
 
     model_config = SettingsConfigDict(

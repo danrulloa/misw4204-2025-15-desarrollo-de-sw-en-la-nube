@@ -7,27 +7,6 @@ from typing import BinaryIO
 
 from app.services.storage.base import StoragePort
 from app.config import UPLOAD_DIR
-import sys, app
-print("app.__file__ =", app.__file__)
-print("cwd=", os.getcwd())
-
-
-
-def _find_repo_root(start: Path) -> Path:
-    """
-    Sube directorios hasta hallar un marcador del repo (.git / README.md / requirements.txt).
-    Evita que 'app' se resuelva a C:\\app.
-    """
-    p = start
-    markers = {".git", "README.md", "requirements.txt"}
-    while True:
-        if any((p / m).exists() for m in markers):
-            return p
-        if p.parent == p:
-            # fallback: cwd si no encontramos marcadores
-            return Path(os.getcwd()).resolve()
-        p = p.parent
-
 
 class LocalStorageAdapter(StoragePort):
     def __init__(self, base_dir: str | None = None):

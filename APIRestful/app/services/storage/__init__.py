@@ -1,7 +1,3 @@
-"""
-Módulo de servicios
-Lógica de negocio de la app
-"""
 # app/services/storage/__init__.py
 from app.services.storage.base import StoragePort
 from app.services.storage.local import LocalStorageAdapter
