@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     PROCESSED_DIR: str = "processed"
 
     # Configuración de base de datos
-    DATABASE_URL: str = "postgresql://anb_user:anb_pass@anb-auth-db:5432/anb_auth"
+    DATABASE_URL: str = "postgresql+asyncpg://anb_user:anb_pass@anb-core-db:5432/anb_core"
     
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
 

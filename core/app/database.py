@@ -1,31 +1,34 @@
-"""
-Configuración de la conexión a la base de datos PostgreSQL
-Módulo temporal - será reemplazado por Frans con integración de Alembic
-"""
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+# app/database.py
+import os
+from typing import AsyncGenerator
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+)
 from app.config import settings
 
-# Crear engine de conexión a PostgreSQL
-# pool_pre_ping=True valida las conexiones antes de usarlas
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+DATABASE_URL = settings.DATABASE_URL  # p.ej. postgresql+asyncpg://user:pass@host:5432/db
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL no está definido")
 
-# Crear session factory para manejar transacciones
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    future=True,
+)
 
-# Base declarativa para los modelos ORM
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    autoflush=False,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
 Base = declarative_base()
 
-
-def get_db():
-    """
-    Dependencia que proporciona una sesión de base de datos para FastAPI
-    Se encarga de abrir y cerrar la sesión automáticamente
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
+# Dependencia para FastAPI
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as session:
+        yield session

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import os, uuid
 
 from app.config import settings                     # ⬅️ usar settings
-from app.database import get_db                     # ⬅️ tu SessionLocal
+from app.database import get_session                     # ⬅️ tu SessionLocal
 from app.models.video import Video, VideoStatus     # ⬅️ modelo real
 from app.services.mq.rabbit import RabbitPublisher  # ⬅️ publisher a Rabbit
 from typing import List
@@ -35,7 +35,7 @@ async def upload_video(
     response: Response,
     video_file: UploadFile = File(..., description="Archivo de video (MP4, máximo 100MB)"),
     title: str = Form(..., description="Título descriptivo del video"),
-    db: Session = Depends(get_db),                       # ⬅️ inyecta sesión
+    db: Session = Depends(get_session),                       # ⬅️ inyecta sesión
 ) -> VideoUploadResponse:
     # --- Validación extensión ---
     _, ext = os.path.splitext(video_file.filename or "")
