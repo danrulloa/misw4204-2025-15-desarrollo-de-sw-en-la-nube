@@ -162,7 +162,7 @@ services:
     restart: unless-stopped
     env_file: [ .env ]
     environment:
-      - POSTGRES_DB=${POSTGRES_CORE_DB:-anb}
+      - POSTGRES_DB=${POSTGRES_CORE_DB:-anb_core}
       - POSTGRES_USER=${POSTGRES_USER:-anb_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
       - PGDATA=/var/lib/postgresql/data/pgdata
