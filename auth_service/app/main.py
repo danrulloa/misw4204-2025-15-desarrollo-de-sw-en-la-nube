@@ -15,7 +15,15 @@ async def lifespan(app: FastAPI):
     await close_db()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="ANB Auth Service",
+    version="1.0.0",
+    docs_url="/auth/docs",
+    redoc_url="/auth/redoc",
+    openapi_url="/auth/openapi.json",
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],          
