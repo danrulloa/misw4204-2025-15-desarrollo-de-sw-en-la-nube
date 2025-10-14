@@ -34,14 +34,15 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.API_VERSION,
     description="API REST para la gestión de videos y votaciones de jugadores de baloncesto",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
 )
 
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Configurar orígenes específicos en producción
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
