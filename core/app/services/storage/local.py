@@ -1,25 +1,22 @@
-import os
-import uuid
-import shutil
+
+import os, uuid, shutil
 from pathlib import Path
 from datetime import datetime
 from typing import BinaryIO
-
 from app.services.storage.base import StoragePort
 from app.config import UPLOAD_DIR
 
 class LocalStorageAdapter(StoragePort):
     def __init__(self, base_dir: str | None = None):
-        upload_dir = base_dir or UPLOAD_DIR  # "uploads"
-
-        # local.py -> .../app/services/storage/local.py
-        repo_root = Path(__file__).resolve().parents[3]  # -> <repo>
-
-        self.base_dir = (repo_root / "storage" / upload_dir).resolve()
+        upload_dir = base_dir or UPLOAD_DIR
+        repo_root = Path(__file__).resolve().parents[3]          # <repo>
+        self.abs_root = (repo_root / "storage").resolve()        # .../core/storage
+        self.base_dir = (self.abs_root / upload_dir).resolve()   # .../storage/uploads
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def save(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
-        day_dir = self.base_dir / datetime.utcnow().strftime("%Y") / datetime.utcnow().strftime("%m") / datetime.utcnow().strftime("%d")
+        today = datetime.utcnow()
+        day_dir = self.base_dir / f"{today:%Y}" / f"{today:%m}" / f"{today:%d}"
         day_dir.mkdir(parents=True, exist_ok=True)
 
         safe_name = f"{uuid.uuid4().hex}-{os.path.basename(filename)}"
@@ -29,7 +26,6 @@ class LocalStorageAdapter(StoragePort):
         with open(dest_path, "wb") as out:
             shutil.copyfileobj(fileobj, out)
 
-        if not dest_path.exists() or dest_path.stat().st_size == 0:
-            raise RuntimeError(f"No se pudo escribir el archivo en {dest_path}")
-
-        return str(dest_path)
+        # Devolver ruta **relativa** (desde /storage), ej: /uploads/2025/10/13/uuid.mp4
+        rel_from_storage = dest_path.relative_to(self.abs_root).as_posix()
+        return f"/{rel_from_storage}"

@@ -1,5 +1,4 @@
 # app/database.py
-import os
 from typing import AsyncGenerator
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import (
@@ -9,12 +8,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from app.config import settings
 
-DATABASE_URL = settings.DATABASE_URL  # p.ej. postgresql+asyncpg://user:pass@host:5432/db
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL no está definido")
-
+# Usar la configuración centralizada en settings
 engine = create_async_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     pool_pre_ping=True,
     future=True,
 )

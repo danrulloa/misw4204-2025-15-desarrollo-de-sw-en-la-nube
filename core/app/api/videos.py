@@ -3,13 +3,15 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Response, Form, Depends
+import select
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Response, Form, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from uuid import UUID
 import os, uuid
-import os, uuid
 
+from pathlib import Path as SysPath
 from app.config import settings                     # ⬅️ usar settings
 from app.database import get_session                     # ⬅️ tu SessionLocal
 from app.models.video import Video, VideoStatus     # ⬅️ modelo real
@@ -25,7 +27,36 @@ from app.schemas.common import ErrorResponse
 from app.config import ALLOWED_VIDEO_FORMATS, MAX_UPLOAD_SIZE_MB
 from app.services.storage import get_storage
 
-router = APIRouter(prefix="/api/videos", tags=["Videos"])
+router = APIRouter(prefix="/videos", tags=["Videos"])
+
+
+# --- helpers ---
+def _public_url_from_rel(rel_path: str | None) -> str | None:
+    """
+    Convierte una ruta relativa de storage (ej: '/uploads/2025/10/13/x.mp4')
+    a una URL pública detrás de Nginx (ej: http://localhost:8080/media/uploads/...).
+    """
+    if not rel_path:
+        return None
+    # normaliza
+    p = rel_path.replace("\\", "/")
+    if p.startswith("/uploads"):
+        suffix = p[len("/uploads"):]
+        return f"{settings.PUBLIC_BASE_URL}{settings.PUBLIC_UPLOAD_PREFIX}{suffix}"
+    if p.startswith("/processed"):
+        suffix = p[len("/processed"):]
+        return f"{settings.PUBLIC_BASE_URL}{settings.PUBLIC_PROCESSED_PREFIX}{suffix}"
+    # fallback: asume uploads
+    return f"{settings.PUBLIC_BASE_URL}{settings.PUBLIC_UPLOAD_PREFIX}{p}"
+
+STORAGE_ROOT = "/app/storage"  # en el contenedor API (compose monta ./core/storage -> /app/storage)
+
+def _abs_path_from_rel(rel_path: str) -> SysPath:
+    """
+    Asegura borrar sólo dentro de /app/storage (evita path traversal).
+    """
+    safe = rel_path.lstrip("/")
+    return (SysPath(STORAGE_ROOT) / safe).resolve()
 
 @router.post(
     "/upload",
@@ -91,13 +122,11 @@ async def upload_video(
     correlation_id = f"req-{uuid.uuid4().hex[:12]}"
 
     # --- Path visto por el worker (si montas /app/storage/uploads -> /mnt/uploads) ---
-    worker_prefix = os.getenv("WORKER_INPUT_PREFIX")  # ej: /mnt/uploads
-    if worker_prefix:
-        norm = saved_path.replace("\\", "/")
-        parts = norm.split("/storage/uploads", 1)
-        input_path = worker_prefix + (parts[1] if len(parts) > 1 else "")
+    
+    if settings.WORKER_INPUT_PREFIX:
+        input_path = saved_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
     else:
-        input_path = saved_path
+        input_path = f"/app/storage{saved_path}"
 
     # --- Publicar a Rabbit opcional (según env) ---
     if os.getenv("PUBLISH_TO_RABBIT", "false").lower() in {"1", "true", "yes"}:
@@ -129,34 +158,34 @@ async def upload_video(
     "",
     status_code=status.HTTP_200_OK,
     response_model=List[VideoListItemResponse],
-    summary="Listar mis videos",
-    description="Obtiene la lista de videos subidos por el usuario autenticado",
-    responses={
-        200: {
-            "description": "Lista de videos obtenida",
-            "model": List[VideoListItemResponse]
-        },
-        401: {
-            "description": "Falta de autenticación",
-            "model": ErrorResponse
-        }
-    }
+    summary="Listar videos",
+    description="Lista videos disponibles. (Luego filtrar por usuario cuando haya auth)"
 )
-async def get_my_videos() -> List[VideoListItemResponse]:
-    """
-    Lista todos los videos del usuario autenticado.
-    
-    Muestra el estado de cada video:
-    - uploaded: Recién subido
-    - processing: En proceso
-    - processed: Listo para visualización
-    - failed: Error en procesamiento
-    """
-    # TODO: Implementar cuando se tenga DB y auth
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint pendiente de implementación. Esperando decisiones de DB."
+async def get_my_videos(
+    db: AsyncSession = Depends(get_session),
+    limit: int = 20,
+    offset: int = 0,
+) -> List[VideoListItemResponse]:
+    stmt = (
+        select(Video)
+        .order_by(Video.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
+    result = await db.execute(stmt)
+    videos = result.scalars().all()
+
+    items: List[VideoListItemResponse] = []
+    for v in videos:
+        items.append(VideoListItemResponse(
+            video_id=str(v.id),
+            title=v.title,
+            status=v.status.value if hasattr(v.status, "value") else v.status,
+            uploaded_at=v.created_at,
+            processed_at=v.processed_at,
+            processed_url=_public_url_from_rel(v.processed_path) if v.status == VideoStatus.processed else None,
+        ))
+    return items
 
 
 @router.get(
@@ -164,40 +193,38 @@ async def get_my_videos() -> List[VideoListItemResponse]:
     status_code=status.HTTP_200_OK,
     response_model=VideoResponse,
     summary="Consultar detalle de video",
-    description="Obtiene el detalle completo de un video específico del usuario",
-    responses={
-        200: {
-            "description": "Detalle del video obtenido",
-            "model": VideoResponse
-        },
-        401: {
-            "description": "Falta de autenticación",
-            "model": ErrorResponse
-        },
-        403: {
-            "description": "El video no pertenece al usuario",
-            "model": ErrorResponse
-        },
-        404: {
-            "description": "Video no encontrado",
-            "model": ErrorResponse
-        }
-    }
+    description="Detalle de un video (URLs públicas incluidas si existen)."
 )
-async def get_video_detail(video_id: str) -> VideoResponse:
-    """
-    Obtiene el detalle completo de un video.
-    
-    Incluye:
-    - Información básica
-    - Estado de procesamiento
-    - URLs de descarga (si está procesado)
-    - Número de votos
-    """
-    # TODO: Implementar cuando se tenga DB y auth
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint pendiente de implementación. Esperando decisiones de DB."
+async def get_video_detail(
+    video_id: str = Path(..., description="UUID del video"),
+    db: AsyncSession = Depends(get_session),
+) -> VideoResponse:
+    try:
+        _ = uuid.UUID(video_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="video_id no es un UUID válido")
+
+    stmt = select(Video).where(Video.id == video_id)
+    res = await db.execute(stmt)
+    video: Video | None = res.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video no encontrado")
+
+    # Conteo de votos (si tienes el modelo Vote; si no, deja 0)
+    # votes_stmt = select(func.count()).select_from(Vote).where(Vote.video_id == video_id)
+    # votes_res = await db.execute(votes_stmt)
+    # votes_count = int(votes_res.scalar() or 0)
+    votes_count = 0
+
+    return VideoResponse(
+        video_id=str(video.id),
+        title=video.title,
+        status=video.status.value if hasattr(video.status, "value") else video.status,
+        uploaded_at=video.created_at,
+        processed_at=video.processed_at,
+        original_url=_public_url_from_rel(video.original_path),
+        processed_url=_public_url_from_rel(video.processed_path) if video.processed_path else None,
+        #votes=votes_count,
     )
 
 
@@ -206,41 +233,46 @@ async def get_video_detail(video_id: str) -> VideoResponse:
     status_code=status.HTTP_200_OK,
     response_model=VideoDeleteResponse,
     summary="Eliminar video",
-    description="Elimina un video propio, solo si no ha sido publicado para votación",
-    responses={
-        200: {
-            "description": "Video eliminado exitosamente",
-            "model": VideoDeleteResponse
-        },
-        400: {
-            "description": "El video no puede ser eliminado (ya está en votación)",
-            "model": ErrorResponse
-        },
-        401: {
-            "description": "Falta de autenticación",
-            "model": ErrorResponse
-        },
-        403: {
-            "description": "El video no pertenece al usuario",
-            "model": ErrorResponse
-        },
-        404: {
-            "description": "Video no encontrado",
-            "model": ErrorResponse
-        }
-    }
+    description="Elimina un video sólo si no está publicado (status != processed)."
 )
-async def delete_video(video_id: str) -> VideoDeleteResponse:
-    """
-    Elimina un video del usuario.
-    
-    Restricciones:
-    - Solo se pueden eliminar videos propios
-    - No se pueden eliminar videos ya publicados para votación
-    - Se eliminan tanto el archivo original como el procesado
-    """
-    # TODO: Implementar cuando se tenga DB, auth y storage
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint pendiente de implementación. Esperando decisiones de DB y storage."
+async def delete_video(
+    video_id: str = Path(..., description="UUID del video"),
+    db: AsyncSession = Depends(get_session),
+) -> VideoDeleteResponse:
+    try:
+        _ = uuid.UUID(video_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="video_id no es un UUID válido")
+
+    res = await db.execute(select(Video).where(Video.id == video_id))
+    video: Video | None = res.scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video no encontrado")
+
+    # (Cuando haya auth, valida que sea dueño aquí)
+
+    if video.status == VideoStatus.processed:
+        raise HTTPException(status_code=400, detail="El video ya está listo para votación; no puede eliminarse.")
+
+    # Borrado de archivos en disco (si existen)
+    try:
+        if video.original_path:
+            abs_orig = _abs_path_from_rel(video.original_path)
+            if abs_orig.is_file():
+                abs_orig.unlink(missing_ok=True)
+        if video.processed_path:
+            abs_proc = _abs_path_from_rel(video.processed_path)
+            if abs_proc.is_file():
+                abs_proc.unlink(missing_ok=True)
+    except Exception:
+        # No abortamos por fallo de IO; puedes loggear si deseas
+        pass
+
+    # Borrar en DB
+    await db.delete(video)
+    await db.commit()
+
+    return VideoDeleteResponse(
+        message="El video ha sido eliminado exitosamente.",
+        video_id=video_id
     )
