@@ -3,12 +3,6 @@ Módulo de schemas Pydantic
 Define modelos de request y response para la API.
 """
 
-from app.schemas.auth import (
-    UserSignupRequest,
-    UserLoginRequest,
-    TokenResponse,
-    UserSignupResponse
-)
 from app.schemas.video import (
     VideoStatus,
     VideoUploadResponse,
@@ -29,11 +23,6 @@ from app.schemas.common import (
 )
 
 __all__ = [
-    # Auth schemas
-    "UserSignupRequest",
-    "UserLoginRequest",
-    "TokenResponse",
-    "UserSignupResponse",
     # Video schemas
     "VideoStatus",
     "VideoUploadResponse",
