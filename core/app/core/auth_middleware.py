@@ -1,5 +1,4 @@
 from fastapi import Request, HTTPException
-from fastapi.routing import APIRoute
 from jose import jwt, JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
@@ -10,14 +9,25 @@ load_dotenv(dotenv_path=".env")
 ACCESS_TOKEN_SECRET_KEY = os.getenv("ACCESS_TOKEN_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 
-# Rutas públicas que no requieren autenticación
-EXCLUDED_PATHS = { "/api/redoc","/api/docs", "/api/openapi.json", "/health"}
+EXCLUDED_PATHS = {
+    "/",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/docs/oauth2-redirect",
+    "/nginx-health"
+}
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Omitir rutas excluidas
-        path=request.url.path
+        path = request.url.path
+
         if path in EXCLUDED_PATHS:
+            return await call_next(request)
+
+        public_prefixes = ("/docs", "/redoc", "/openapi", "/public")
+        if any(path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
@@ -28,7 +38,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
             payload = jwt.decode(token, ACCESS_TOKEN_SECRET_KEY, algorithms=[ALGORITHM])
-            # Guardar información del usuario en el request.state
             request.state.user = {
                 "username": payload.get("sub"),
                 "user_id": payload.get("user_id"),
