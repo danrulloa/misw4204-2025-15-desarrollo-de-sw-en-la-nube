@@ -26,8 +26,8 @@ class User(BaseModel):
     country = Column(String(100), nullable=False)  # País del jugador
     
     # Relaciones con otras tablas
-    videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
-    votes = relationship("Vote", back_populates="user", cascade="all, delete-orphan")
+    #videos = relationship("Video", back_populates="user", cascade="all, delete-orphan")
+    #votes = relationship("Vote", back_populates="user", cascade="all, delete-orphan")
     
     @property
     def full_name(self):
