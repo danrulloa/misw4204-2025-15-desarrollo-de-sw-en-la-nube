@@ -26,12 +26,7 @@ class Video(BaseModel):
     __tablename__ = "videos"
     
     # Relación con el usuario propietario
-    user_id = Column(
-        UUID(as_uuid=False), 
-        ForeignKey("users.id", ondelete="CASCADE"),  # Si se borra el usuario, se borran sus videos
-        nullable=False, 
-        index=True
-    )
+    user_id = Column(String(64), nullable=False, index=True) 
     
     # Información del video
     title = Column(String(255), nullable=False)
@@ -54,10 +49,10 @@ class Video(BaseModel):
     # Timestamp de procesamiento
     processed_at = Column(DateTime, nullable=True)
     
-    # Campo para trazabilidad con el worker (usado por David en RabbitMQ)
+    # Campo para trazabilidad con el sistema de procesamiento asíncrono
     correlation_id = Column(String(100), nullable=True, index=True)
     
     # Relaciones con otras tablas
-    user = relationship("User", back_populates="videos")
+    #user = relationship("User", back_populates="videos")
     votes = relationship("Vote", back_populates="video", cascade="all, delete-orphan")
 

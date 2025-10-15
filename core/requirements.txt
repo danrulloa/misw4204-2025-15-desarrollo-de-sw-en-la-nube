@@ -23,3 +23,7 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 asyncpg==0.30.0
 python-jose==3.5.0
+
+pyjwt>=2.8
+python-multipart>=0.0.9
+pika>=1.3
