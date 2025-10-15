@@ -211,5 +211,7 @@ APIRestful_backup_legacy/
 *_backup/
 *_legacy/
 *_old/
+.env
 
 Entrega 1 - Implementacio n de una API REST escalable con orquestacio n de tareas asi ncronas.md
+
