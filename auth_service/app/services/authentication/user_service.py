@@ -14,48 +14,47 @@ from app.schemas.user import UserCreate
 
 class UserService:
     @staticmethod
-    async def create_user(user_data: UserCreate, db: AsyncSession):
+    async def create_user(user_data: UserCreate, db: AsyncSession) -> User:
         from app.services.authentication.auth_service import AuthService
-        # Verificar si el usuario ya existe
-        query = select(User).where(
-            (User.username == user_data.username) | (User.email == user_data.email)
-        )
-        result = await db.execute(query)
-        existing_user = result.scalar()
 
-        if existing_user:
+        # 1) ¿Email ya registrado?
+        exists_q = await db.execute(select(User.id).where(User.email == user_data.email))
+        if exists_q.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username or email already registered"
+                detail="El email ya está registrado",
             )
 
-        # Hashear la contraseña
-        hashed_password = AuthService.get_password_hash(user_data.password)
+        # 2) Hash de contraseña (usa password1)
+        hashed_password = AuthService.get_password_hash(user_data.password1)
 
-        # Crear la instancia del usuario
+        # 3) Construir el usuario (tenant por defecto a 0)
         new_user = User(
-            username=user_data.username,
             email=user_data.email,
             hashed_password=hashed_password,
-            tenant_id=user_data.tenant
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
+            country=user_data.country,
+            city=user_data.city,
         )
 
-        # Asignar grupo por defecto si existe
-        default_group_result = await db.execute(select(Group).where(Group.name == "user"))
-        default_group = default_group_result.scalar()
+        # 4) Asignar grupo por defecto si existe
+        default_group = (await db.execute(select(Group).where(Group.name == "user"))).scalar_one_or_none()
         if default_group:
             new_user.groups.append(default_group)
 
+        # 5) Persistir
         db.add(new_user)
         try:
             await db.commit()
             await db.refresh(new_user)
-        except IntegrityError:
+        except IntegrityError as e:
             await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create user due to database error"
-            )
+            # Si hay violación de unique en email, devolvemos un mensaje claro
+            msg = "No se pudo crear el usuario por un error de base de datos"
+            if "email" in str(e.orig).lower():
+                msg = "El email ya está registrado"
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg) from e
 
         return new_user
 

@@ -35,13 +35,13 @@ class AuthService:
         return pwd_context.hash(password)
 
     @staticmethod
-    async def get_user(username: str, db: AsyncSession) -> Optional[User]:
-        result = await db.execute(select(User).where(User.username == username))
+    async def get_user(email: str, db: AsyncSession) -> Optional[User]:
+        result = await db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def authenticate_user(username: str, password: str, db: AsyncSession) -> Optional[User]:
-        user = await AuthService.get_user(username, db)
+    async def authenticate_user(email: str, password: str, db: AsyncSession) -> Optional[User]:
+        user = await AuthService.get_user(email, db)
         if not user or not AuthService.verify_password(password, user.hashed_password):
             return None
         return user

@@ -41,7 +41,7 @@ async def login(
     # 4. Crear access y refresh tokens
     access_token, access_expiration = AuthService.create_access_token(
         data={
-            "sub": user.username,
+            "sub": user.email,
             "user_id": user.id,
             "tenant_id": user.tenant_id,
             "permissions": permissions
@@ -50,7 +50,7 @@ async def login(
     )
     refresh_token, refresh_expiration = AuthService.create_refresh_token(
         data={
-            "sub": user.username,
+            "sub": user.email,
             "user_id": user.id
         },
         expires_delta=expires_delta_refresh 
@@ -76,12 +76,12 @@ async def login(
     }
 
 
-@router.post("/register")
+@router.post("/signup")
 #Cuando se finalize el desarrollo se debe ajustar el nivel de seguridad del registro
 async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
         new_user = await UserService.create_user(user_data, db)
-        return {"username": new_user.username, "email": new_user.email}
+        return {"email": new_user.email, "message":"Usuario creado exitosamente","user_id":new_user.id}
     except HTTPException as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     

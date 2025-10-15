@@ -46,7 +46,7 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
+      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/auth/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
       interval: 15s
       timeout: 5s
       start_period: 25s
