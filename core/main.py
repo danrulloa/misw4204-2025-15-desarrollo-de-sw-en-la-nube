@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+from app.core.auth_middleware import AuthMiddleware
 
 from app.config import settings
 from app.database import Base, engine  # <-- engine debe ser create_async_engine
@@ -47,6 +48,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(AuthMiddleware)
 
 # Registrar exception handlers
 app.add_exception_handler(APIException, api_exception_handler)

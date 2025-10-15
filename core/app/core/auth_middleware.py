@@ -11,7 +11,7 @@ ACCESS_TOKEN_SECRET_KEY = os.getenv("ACCESS_TOKEN_SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 
 # Rutas públicas que no requieren autenticación
-EXCLUDED_PATHS = {"/auth/api/v1/login", "/auth/api/v1/status","/auth/api/v1/signup","/api/v1/refresh", "/auth/redoc","/auth/docs", "/auth/openapi.json"}
+EXCLUDED_PATHS = { "/api/redoc","/api/docs", "/api/openapi.json", "/health"}
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
