@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 
 class VoteResponse(BaseModel):
@@ -18,19 +18,19 @@ class PublicVideoResponse(BaseModel):
     """Schema para videos públicos disponibles para votación"""
     video_id: str = Field(..., description="ID único del video")
     title: str = Field(..., description="Título del video")
-    player_name: str = Field(..., description="Nombre del jugador")
+    username: str = Field(..., description="Nombre del jugador")
     city: str = Field(..., description="Ciudad del jugador")
-    processed_url: str = Field(..., description="URL del video procesado")
+    processed_url: Optional[str] = Field(None, description="URL del video procesado")
     votes: int = Field(default=0, description="Número de votos recibidos")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "video_id": "a1b2c3d4",
+                "video_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "title": "Tiros de tres en movimiento",
-                "player_name": "John Doe",
+                "username": "Pedro López",
                 "city": "Bogotá",
-                "processed_url": "https://anb.com/processed/a1b2c3d4.mp4",
+                "processed_url": None,
                 "votes": 125
             }
         }
@@ -47,7 +47,7 @@ class RankingItemResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "position": 1,
-                "username": "superplayer",
+                "username": "Pedro López",
                 "city": "Bogotá",
                 "votes": 1530
             }
@@ -65,14 +65,14 @@ class RankingResponse(BaseModel):
                 "rankings": [
                     {
                         "position": 1,
-                        "username": "superplayer",
+                        "username": "Pedro López",
                         "city": "Bogotá",
                         "votes": 1530
                     },
                     {
                         "position": 2,
-                        "username": "nextstar",
-                        "city": "Bogotá",
+                        "username": "Ana Martínez",
+                        "city": "Medellín",
                         "votes": 1495
                     }
                 ],

@@ -44,7 +44,10 @@ async def login(
             "sub": user.email,
             "user_id": user.id,
             "tenant_id": user.tenant_id,
-            "permissions": permissions
+            "permissions": permissions,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "city": user.city or ""
         },
         expires_delta=expires_delta_access
     )

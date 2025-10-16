@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from app.core.auth_middleware import AuthMiddleware
 
 from app.config import settings
-from app.database import Base, engine  # <-- engine debe ser create_async_engine
+from app.database import Base, engine
 from app.exceptions import (
     APIException,
     api_exception_handler,
@@ -16,17 +16,10 @@ from app.exceptions import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Gestiona el ciclo de vida de la aplicación.
-    Crea las tablas al iniciar y libera recursos al cerrar.
-    """
-    # Crear tablas de forma ASÍNCRONA
+    """Gestiona el ciclo de vida de la aplicación"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
     yield
-
-    # Cerrar el pool/engine asíncrono al apagar
     await engine.dispose()
 
 
@@ -35,15 +28,15 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.API_VERSION,
     description="API REST para la gestión de videos y votaciones de jugadores de baloncesto",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json"
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={"url": "./openapi.json"}
 )
 
-# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,15 +44,12 @@ app.add_middleware(
 
 app.add_middleware(AuthMiddleware)
 
-# Registrar exception handlers
 app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
-# Importar y registrar routers
-from app.api import auth, videos, public  # noqa: E402
+from app.api import videos, public  # noqa: E402
 
-app.include_router(auth.router)
 app.include_router(videos.router)
 app.include_router(public.router)
 

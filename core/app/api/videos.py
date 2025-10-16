@@ -3,15 +3,14 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import os, uuid, jwt
-from uuid import UUID as UUID_cls
+from pathlib import Path as PathLib
 from app.config import settings
 from app.database import get_session
 from app.models.video import Video, VideoStatus
-from app.schemas.video import VideoUploadResponse
 from app.services.storage._init_ import get_storage
 from app.services.mq.rabbit import RabbitPublisher
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -22,9 +21,8 @@ from app.schemas.video import (
     VideoResponse,
     VideoDeleteResponse
 )
-from app.schemas.common import ErrorResponse
 
-router = APIRouter(prefix="/api/videos", tags=["Videos"])
+router = APIRouter(prefix="/videos", tags=["Videos"])
 _bearer = HTTPBearer(auto_error=True)
 
 def _current_user_id(creds: HTTPAuthorizationCredentials) -> str:
@@ -59,19 +57,25 @@ def _validate_ext_and_size(file: UploadFile):
         raise HTTPException(status_code=413, detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.")
     return ext, size_bytes
 
-def _abs_storage_path(rel_path: str) -> Path:
-    """
-    Convierte rutas relativas guardadas en DB (p. ej. '/uploads/2025/10/15/x.mp4')
-    a rutas absolutas dentro del contenedor (p. ej. '/app/storage/uploads/...').
-    """
+def _abs_storage_path(rel_path: str) -> PathLib:
+    """Convierte rutas relativas de BD a rutas absolutas del contenedor"""
     if not rel_path:
-        return Path("/non/existent")
+        return PathLib("/non/existent")
     if rel_path.startswith("/uploads"):
-        return Path(rel_path.replace("/uploads", settings.UPLOAD_DIR, 1))
+        return PathLib(rel_path.replace("/uploads", settings.UPLOAD_DIR, 1))
     if rel_path.startswith("/processed"):
-        return Path(rel_path.replace("/processed", settings.PROCESSED_DIR, 1))
-    # fallback: trata como relativo a uploads
-    return Path(settings.UPLOAD_DIR.rstrip("/")) / rel_path.lstrip("/")
+        return PathLib(rel_path.replace("/processed", settings.PROCESSED_DIR, 1))
+    return PathLib(settings.UPLOAD_DIR.rstrip("/")) / rel_path.lstrip("/")
+
+def _get_user_from_request(request: Request) -> dict:
+    """Extrae información del usuario desde request.state"""
+    user = request.state.user
+    return {
+        "user_id": user.get("user_id"),
+        "first_name": user.get("first_name", ""),
+        "last_name": user.get("last_name", ""),
+        "city": user.get("city", "")
+    }
 
 @router.post(
     "/upload",
@@ -80,6 +84,7 @@ def _abs_storage_path(rel_path: str) -> Path:
     summary="Subir video"
 )
 async def upload_video(
+    request: Request,
     response: Response,
     video_file: UploadFile = File(..., description="Archivo de video"),
     title: str = Form(..., description="Título del video"),
@@ -90,30 +95,30 @@ async def upload_video(
     user_id = _current_user_id(creds)
     ext, size_bytes = _validate_ext_and_size(video_file)
 
-    # Guardar archivo usando el storage local (retorna ruta relativa: /uploads/AAAA/MM/DD/uuid-nombre.mp4)
     storage = get_storage()
     filename = f"{uuid.uuid4().hex}.{ext}"
     saved_rel_path = storage.save(video_file.file, filename, video_file.content_type or "application/octet-stream")
 
-    # Crear registro en BD
+    user_info = _get_user_from_request(request)
+
     video = Video(
         user_id=user_id,
         title=title,
         original_filename=video_file.filename or filename,
-        original_path=saved_rel_path,          # ej: /uploads/2025/10/13/xxx.mp4
+        original_path=saved_rel_path,
         status=VideoStatus.uploaded,
         file_size_mb=round(size_bytes / (1024*1024), 2),
+        player_first_name=user_info["first_name"],
+        player_last_name=user_info["last_name"],
+        player_city=user_info["city"]
     )
     db.add(video)
     await db.commit()
     await db.refresh(video)
 
-    # Construir input_path para el worker
-    # /uploads/...  ->  /mnt/uploads/...  (WORKER_INPUT_PREFIX)
     input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
     correlation_id = f"req-{uuid.uuid4().hex[:12]}"
 
-    # Publicar mensaje a Rabbit
     try:
         payload = {
             "video_id": str(video.id),
@@ -124,11 +129,9 @@ async def upload_video(
         pub = RabbitPublisher()
         try:
             pub.publish_video(payload)
-            print("payload to rabbit:", payload, type(payload))
         finally:
             pub.close()
     except Exception as e:
-        # si falla Rabbit, marcamos failed o devolvemos 502
         raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
     response.headers["Location"] = f"/api/videos/{video.id}"
@@ -139,7 +142,6 @@ async def upload_video(
     )
 
 
-# ============== GET /api/videos  =================
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -172,13 +174,12 @@ async def get_my_videos(
             status=v.status,
             uploaded_at=v.created_at,
             processed_at=v.processed_at,
-            processed_url=None,   # sin URLs públicas por ahora
+            processed_url=None,
         )
         for v in videos
     ]
 
 
-# ============== GET /api/videos/{video_id}  =================
 @router.get(
     "/{video_id}",
     status_code=status.HTTP_200_OK,
@@ -201,7 +202,6 @@ async def get_video_detail(
     if str(video.user_id) != str(user_id):
         raise HTTPException(status_code=403, detail="El video no pertenece al usuario")
 
-    # si aún no tienes votos, déjalo en 0 por ahora
     votes_count = 0
 
     return VideoResponse(
@@ -210,8 +210,8 @@ async def get_video_detail(
         status=video.status,
         uploaded_at=video.created_at,
         processed_at=video.processed_at,
-        original_url=None,   # sin URLs públicas por ahora
-        processed_url=None,  # sin URLs públicas por ahora
+        original_url=None,
+        processed_url=None,
         votes=votes_count,
     )
 
@@ -230,24 +230,20 @@ async def delete_video(
 ) -> VideoDeleteResponse:
     user_id = _current_user_id(creds)
 
-    # Buscar video
     res = await db.execute(select(Video).where(Video.id == video_id))
     video: Video | None = res.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video no encontrado")
 
-    # Validar ownership
     if str(video.user_id) != str(user_id):
         raise HTTPException(status_code=403, detail="El video no pertenece al usuario")
 
-    # Regla de negocio: no borrar si ya está publicado para votación
     if video.status == VideoStatus.processed:
         raise HTTPException(
             status_code=400,
             detail="El video ya está listo para votación; no puede eliminarse."
         )
 
-    # Intentar borrar archivos (no detenemos si falla IO)
     try:
         if video.original_path:
             p = _abs_storage_path(video.original_path)
@@ -258,9 +254,8 @@ async def delete_video(
             if p.is_file():
                 p.unlink(missing_ok=True)
     except Exception:
-        pass  # podrías loguear
+        pass
 
-    # Borrar en DB
     await db.delete(video)
     await db.commit()
 
