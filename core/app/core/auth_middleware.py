@@ -42,7 +42,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "username": payload.get("sub"),
                 "user_id": payload.get("user_id"),
                 "tenant_id": payload.get("tenant_id"),
-                "permissions": payload.get("permissions", [])
+                "permissions": payload.get("permissions", []),
+                "first_name": payload.get("first_name", ""),
+                "last_name": payload.get("last_name", ""),
+                "city": payload.get("city", "")
             }
         except JWTError:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
