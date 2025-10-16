@@ -24,10 +24,15 @@ class Video(BaseModel):
     Representa los videos de habilidades subidos por los jugadores
     """
     __tablename__ = "videos"
-    
+
     # Relación con el usuario propietario
-    user_id = Column(String(64), nullable=False, index=True) 
-    
+    user_id = Column(String(64), nullable=False, index=True)
+
+    # Datos del jugador (desnormalizados del JWT para queries públicas)
+    player_first_name = Column(String(100), nullable=True)
+    player_last_name = Column(String(100), nullable=True)
+    player_city = Column(String(100), nullable=True)
+
     # Información del video
     title = Column(String(255), nullable=False)
     original_filename = Column(String(255), nullable=False)
