@@ -3,10 +3,11 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import os, uuid, jwt
+from pathlib import Path as PathLib
 from app.config import settings
 from app.database import get_session
 from app.models.video import Video, VideoStatus
@@ -21,7 +22,7 @@ from app.schemas.video import (
     VideoDeleteResponse
 )
 
-router = APIRouter(prefix="/api/videos", tags=["Videos"])
+router = APIRouter(prefix="/videos", tags=["Videos"])
 _bearer = HTTPBearer(auto_error=True)
 
 def _current_user_id(creds: HTTPAuthorizationCredentials) -> str:
@@ -56,15 +57,25 @@ def _validate_ext_and_size(file: UploadFile):
         raise HTTPException(status_code=413, detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.")
     return ext, size_bytes
 
-def _abs_storage_path(rel_path: str) -> Path:
+def _abs_storage_path(rel_path: str) -> PathLib:
     """Convierte rutas relativas de BD a rutas absolutas del contenedor"""
     if not rel_path:
-        return Path("/non/existent")
+        return PathLib("/non/existent")
     if rel_path.startswith("/uploads"):
-        return Path(rel_path.replace("/uploads", settings.UPLOAD_DIR, 1))
+        return PathLib(rel_path.replace("/uploads", settings.UPLOAD_DIR, 1))
     if rel_path.startswith("/processed"):
-        return Path(rel_path.replace("/processed", settings.PROCESSED_DIR, 1))
-    return Path(settings.UPLOAD_DIR.rstrip("/")) / rel_path.lstrip("/")
+        return PathLib(rel_path.replace("/processed", settings.PROCESSED_DIR, 1))
+    return PathLib(settings.UPLOAD_DIR.rstrip("/")) / rel_path.lstrip("/")
+
+def _get_user_from_request(request: Request) -> dict:
+    """Extrae información del usuario desde request.state"""
+    user = request.state.user
+    return {
+        "user_id": user.get("user_id"),
+        "first_name": user.get("first_name", ""),
+        "last_name": user.get("last_name", ""),
+        "city": user.get("city", "")
+    }
 
 @router.post(
     "/upload",
@@ -73,6 +84,7 @@ def _abs_storage_path(rel_path: str) -> Path:
     summary="Subir video"
 )
 async def upload_video(
+    request: Request,
     response: Response,
     video_file: UploadFile = File(..., description="Archivo de video"),
     title: str = Form(..., description="Título del video"),
@@ -87,6 +99,8 @@ async def upload_video(
     filename = f"{uuid.uuid4().hex}.{ext}"
     saved_rel_path = storage.save(video_file.file, filename, video_file.content_type or "application/octet-stream")
 
+    user_info = _get_user_from_request(request)
+
     video = Video(
         user_id=user_id,
         title=title,
@@ -94,6 +108,9 @@ async def upload_video(
         original_path=saved_rel_path,
         status=VideoStatus.uploaded,
         file_size_mb=round(size_bytes / (1024*1024), 2),
+        player_first_name=user_info["first_name"],
+        player_last_name=user_info["last_name"],
+        player_city=user_info["city"]
     )
     db.add(video)
     await db.commit()
