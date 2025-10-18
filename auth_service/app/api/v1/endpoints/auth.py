@@ -21,7 +21,12 @@ REFRESH_TOKEN_EXPIRE_MINUTES = int(os.environ["REFRESH_TOKEN_EXPIRE"])
 
 router = APIRouter()
 
-@router.post("/login")
+@router.post(
+    "/login",
+    summary="Iniciar sesión",
+    description="Autentica un usuario y retorna tokens de acceso (access_token y refresh_token)",
+    response_description="Tokens JWT para autenticación"
+)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
@@ -79,8 +84,13 @@ async def login(
     }
 
 
-@router.post("/signup", status_code=201)
-#Cuando se finalize el desarrollo se debe ajustar el nivel de seguridad del registro
+@router.post(
+    "/signup",
+    status_code=201,
+    summary="Registrar usuario",
+    description="Registra un nuevo jugador en el sistema. Retorna código 201 al crear exitosamente.",
+    response_description="Información del usuario creado"
+)
 async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
         new_user = await UserService.create_user(user_data, db)
@@ -88,7 +98,12 @@ async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db
     except HTTPException as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    summary="Refrescar token de acceso",
+    description="Genera un nuevo access_token usando un refresh_token válido",
+    response_description="Nuevo access_token"
+)
 async def refresh_token(
     refresh_token: str,
     db: AsyncSession = Depends(get_db)
