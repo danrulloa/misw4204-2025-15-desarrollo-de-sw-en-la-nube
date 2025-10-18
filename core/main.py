@@ -52,10 +52,11 @@ app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
-# Routers
-from app.api import videos, public  # noqa: E402
+
+from app.api import videos, public, auth
 app.include_router(videos.router)
 app.include_router(public.router)
+app.include_router(auth.router)
 
 @app.get("/")
 async def root():

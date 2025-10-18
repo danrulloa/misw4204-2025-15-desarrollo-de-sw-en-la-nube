@@ -58,7 +58,10 @@ async def list_public_videos(
     db: AsyncSession = Depends(get_session)
 ) -> List[PublicVideoResponse]:
     """Lista videos públicos disponibles para votación"""
+    
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented yet")
 
+    # Implementation below - will be enabled in future
     stmt = (
         select(
             Video.id,
@@ -167,7 +170,10 @@ async def vote_video(
     creds: HTTPAuthorizationCredentials = Depends(_bearer)
 ) -> VoteResponse:
     """Registra un voto para un video"""
+    
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented yet")
 
+    # Implementation below - will be enabled in future
     user_id = _get_user_id_from_token(creds)
 
     result = await db.execute(select(Video).where(Video.id == video_id))
@@ -215,7 +221,10 @@ async def get_rankings(
     db: AsyncSession = Depends(get_session)
 ) -> RankingResponse:
     """Obtiene el ranking de jugadores por votos totales"""
+    
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented yet")
 
+    # Implementation below - will be enabled in future
     stmt = (
         select(
             Video.user_id,
