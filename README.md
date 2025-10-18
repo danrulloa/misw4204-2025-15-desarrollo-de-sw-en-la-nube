@@ -125,6 +125,112 @@ La colección incluye:
 - Validación de códigos HTTP correctos
 - Scripts que guardan automáticamente tokens y IDs para facilitar el flujo de pruebas
 
+## Pruebas Unitarias y Coverage
+
+El proyecto incluye pruebas unitarias para los servicios core y auth con coverage configurado.
+
+### Requisitos previos
+
+- Python 3.12+ (testeado con Python 3.13)
+- pip actualizado
+
+### Configuración inicial del entorno virtual
+
+**Crear entorno virtual (solo la primera vez):**
+
+```bash
+# Desde la raíz del proyecto
+python -m venv venv
+```
+
+**Activar entorno virtual:**
+
+```bash
+# Windows PowerShell/CMD:
+venv\Scripts\activate
+
+# Linux/Mac:
+source venv/bin/activate
+```
+
+Verás `(venv)` al inicio de tu línea de comando cuando esté activo.
+
+### Ejecutar pruebas del servicio Core
+
+```bash
+# 1. Ir al directorio core
+cd core
+
+# 2. Instalar dependencias (primera vez o si hay cambios)
+pip install -r requirements.txt
+
+# 3. Ejecutar pruebas con coverage
+pytest
+
+# 4. Ver reporte HTML detallado
+start htmlcov\index.html  # Windows
+open htmlcov/index.html   # Mac
+xdg-open htmlcov/index.html  # Linux
+```
+
+### Ejecutar pruebas del servicio Auth
+
+```bash
+# 1. Ir al directorio auth_service (desde raíz)
+cd auth_service
+
+# 2. Instalar dependencias (primera vez o si hay cambios)
+pip install -r requirements.txt
+
+# 3. Ejecutar pruebas con coverage
+pytest
+
+# 4. Ver reporte HTML detallado
+start htmlcov\index.html  # Windows
+open htmlcov/index.html   # Mac
+xdg-open htmlcov/index.html  # Linux
+```
+
+### Configuración de Coverage
+
+Ambos servicios están configurados para:
+- **Coverage mínimo**: 80%
+- **Reporte en terminal**: Muestra líneas faltantes con `--cov-report=term-missing`
+- **Reporte HTML**: Visualización detallada por archivo en `htmlcov/`
+
+La configuración se encuentra en:
+- [core/pytest.ini](core/pytest.ini)
+- [auth_service/pytest.ini](auth_service/pytest.ini)
+
+### Pruebas disponibles
+
+**Servicio Core** ([core/tests/](core/tests/)):
+- `test_config.py` - Configuración de la aplicación
+- `test_exceptions.py` - Manejo de excepciones
+- `test_schemas_video.py` - Validación de schemas de video
+- `test_schemas_vote.py` - Validación de schemas de voto
+- `test_api_endpoints.py` - Endpoints de la API
+
+**Servicio Auth** ([auth_service/tests/](auth_service/tests/)):
+- `test_status.py` - Health check del servicio
+
+### Notas importantes para Windows
+
+Algunos paquetes no son compatibles con Windows y están comentados en `requirements.txt`:
+
+- **`psycopg2-binary`**: No compila en Windows. Se usa `asyncpg` en su lugar.
+- **`uvloop`**: Solo disponible en Linux/Mac. No es necesario para desarrollo local.
+
+Estos paquetes **sí funcionan en Docker** porque los contenedores usan Linux.
+
+### Desactivar entorno virtual
+
+Cuando termines de trabajar:
+
+```bash
+deactivate
+```
+
 ## Arquitectura
 
 ### Componentes Principales

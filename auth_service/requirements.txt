@@ -5,7 +5,7 @@ certifi==2025.4.26
 fastapi==0.115.12
 h11==0.16.0
 httpcore==1.0.9
-httptools==0.6.4
+httptools==0.6.4; python_version < "3.13"
 httpx==0.28.1
 idna==3.10
 iniconfig==2.1.0
@@ -28,13 +28,13 @@ typing-inspection==0.4.1
 typing_extensions==4.13.2
 uvicorn==0.34.3
 # uvloop==0.21.0  # Comentado: no compatible con Windows (solo Linux/Mac)
-watchfiles==1.0.5
+watchfiles==1.0.5; python_version < "3.13"
 websockets==15.0.1
 SQLAlchemy==2.0.41
 # psycopg2-binary==2.9.10  # Comentado: no se usa, solo asyncpg
 asyncpg==0.30.0
 greenlet==3.2.3
-python-dotenv== 1.1.1
+python-dotenv==1.1.1
 alembic==1.16.2
 python-jose==3.5.0
 passlib==1.7.4
