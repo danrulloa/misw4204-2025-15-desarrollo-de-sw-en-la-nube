@@ -126,6 +126,8 @@ services:
       - APP_ENV=${APP_ENV:-production}
     volumes:
       - ./worker:/app
+      - ./core/storage:/app/storage
+      - ./worker/assets:/app/assets:ro
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
     depends_on:
