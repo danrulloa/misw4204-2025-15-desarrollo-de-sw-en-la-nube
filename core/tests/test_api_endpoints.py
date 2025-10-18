@@ -65,25 +65,29 @@ class TestAuthEndpoints:
 
 
 class TestVideoEndpoints:
-    """Tests para endpoints de videos"""
-    
-    def test_list_videos_endpoint_exists(self, client):
-        """Test que el endpoint de listar videos existe"""
-        response = client.get("/api/videos")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_get_video_detail_endpoint_exists(self, client):
-        """Test que el endpoint de detalle de video existe"""
-        response = client.get("/api/videos/abc123")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_delete_video_endpoint_exists(self, client):
-        """Test que el endpoint de eliminar video existe"""
-        response = client.delete("/api/videos/abc123")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+    """Tests para endpoints de videos (según api/videos.py).
+    Todos requieren autenticación; sin token deben responder 401.
+    """
+
+    def test_upload_video_endpoint_requires_auth(self, client):
+        # POST /api/videos/upload sin Authorization → 401
+        resp = client.post("/api/videos/upload")
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_videos_endpoint_requires_auth(self, client):
+        # GET /api/videos sin Authorization → 401
+        resp = client.get("/api/videos")
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_get_video_detail_endpoint_requires_auth(self, client):
+        # GET /api/videos/{video_id} sin Authorization → 401
+        resp = client.get("/api/videos/abc123")
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_delete_video_endpoint_requires_auth(self, client):
+        # DELETE /api/videos/{video_id} sin Authorization → 401
+        resp = client.delete("/api/videos/abc123")
+        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestPublicEndpoints:
