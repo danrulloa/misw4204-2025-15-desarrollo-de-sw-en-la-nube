@@ -1,15 +1,9 @@
-# ---------------------------------------
-# loki/config.yml
-# ---------------------------------------
-# Almacenamiento local (filesystem) para pruebas locales.
+auth_enabled: false
 
----
 server:
   http_listen_port: 3100
-  log_level: warn
 
 common:
-  instance_addr: 127.0.0.1
   path_prefix: /loki
   storage:
     filesystem:
@@ -17,7 +11,6 @@ common:
       rules_directory: /loki/rules
   replication_factor: 1
   ring:
-    instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
 
@@ -26,10 +19,15 @@ schema_config:
     - from: 2024-01-01
       store: boltdb-shipper
       object_store: filesystem
-      schema: v13
+      schema: v12
       index:
         prefix: index_
         period: 24h
 
-ruler:
-  alertmanager_url: http://localhost:9093
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+
+limits_config:
+  retention_period: 168h
+  allow_structured_metadata: true
