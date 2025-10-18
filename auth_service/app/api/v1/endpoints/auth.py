@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate, RefreshRequest
 from app.services.authentication.auth_service import AuthService
 from app.services.authentication.user_service import UserService
 from app.db.session import get_db
@@ -105,9 +105,14 @@ async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db
     response_description="Nuevo access_token"
 )
 async def refresh_token(
-    refresh_token: str,
+    request: RefreshRequest,
     db: AsyncSession = Depends(get_db)
 ):
+    refresh_token = request.refresh_token
+    
+    if not refresh_token or not refresh_token.strip():
+        raise HTTPException(status_code=401, detail="Refresh token requerido")
+
     # 1. Validar existencia de la sesión
     result = await db.execute(
         select(Session).where(Session.refresh_token == refresh_token)

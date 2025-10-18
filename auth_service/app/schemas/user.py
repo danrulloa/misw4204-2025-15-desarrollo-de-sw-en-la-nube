@@ -37,3 +37,7 @@ class UserBasic(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
