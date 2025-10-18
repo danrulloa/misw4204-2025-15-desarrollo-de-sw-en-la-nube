@@ -1,4 +1,5 @@
-from fastapi import Request, HTTPException
+from fastapi import Request
+from starlette.responses import JSONResponse
 from jose import jwt, JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
@@ -32,7 +33,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing or invalid Authorization header"}
+            )
 
         token = auth_header[len("Bearer "):]
 
@@ -48,6 +52,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "city": payload.get("city", "")
             }
         except JWTError:
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or expired token"}
+            )
 
         return await call_next(request)
