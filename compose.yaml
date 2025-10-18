@@ -79,6 +79,10 @@ services:
         condition: service_healthy
       anb-auth-service:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      grafana:
+        condition: service_started
     networks:
       - internal
       - public
@@ -98,8 +102,7 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-    ports:
-      - "15672:15672"
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
@@ -108,12 +111,9 @@ services:
       retries: 5
     networks:
       - internal
-      - public
     logging:
       driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+      options: { max-size: "10m", max-file: "5" }
 
   worker:
     build:
@@ -161,6 +161,7 @@ services:
       retries: 10
     networks:
       - internal
+ 
   anb-core-db:
     image: postgres:15-alpine
     container_name: anb-core-db
@@ -183,6 +184,73 @@ services:
     networks:
       - internal
 
+#####################observavilidad 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command: ["--web.enable-lifecycle", "--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - anb-auth-db
+      - anb-core-db
+    networks:
+      - internal
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      - GF_SERVER_ROOT_URL=http://localhost:8080/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_SERVER_DOMAIN=localhost
+      - GF_SERVER_PROTOCOL=http
+      - GF_SERVER_ENFORCE_DOMAIN=false
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - internal
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:0.11.0
+    container_name: nginx-exporter
+    command:
+      - -nginx.scrape-uri=http://nginx-proxy:80/nginx_status
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    networks:
+      - internal
+
+  pg_exporter_auth:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: pg-exporter-auth
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-auth-db:5432/${POSTGRES_DB:-anb_auth}?sslmode=disable
+    restart: unless-stopped
+    depends_on:
+      - anb-auth-db
+    networks:
+      - internal
+
+  pg_exporter_core:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: pg-exporter-core
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-core-db:5432/${POSTGRES_CORE_DB:-anb_core}?sslmode=disable
+    restart: unless-stopped
+    depends_on:
+      - anb-core-db
+    networks:
+      - internal
+
 networks:
   public:
     name: anb-public
@@ -194,3 +262,4 @@ volumes:
   rabbitmq_data:
   postgres_data:
   postgres_core_data:
+  grafana_data:

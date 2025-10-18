@@ -77,6 +77,28 @@
         "x-dead-letter-exchange": "video",
         "x-dead-letter-routing-key": "video"
       }
+    },
+    {
+      "name": "video_retry_2m",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 120000,
+        "x-dead-letter-exchange": "video",
+        "x-dead-letter-routing-key": "video"
+      }
+    },
+    {
+      "name": "video_retry_10m",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 600000,
+        "x-dead-letter-exchange": "video",
+        "x-dead-letter-routing-key": "video"
+      }
     }
   ],
   "bindings": [
@@ -103,9 +125,46 @@
       "destination_type": "queue",
       "routing_key": "video.retry.60",
       "arguments": {}
+    },
+    {
+      "source": "video-retry",
+      "vhost": "/",
+      "destination": "video_retry_2m",
+      "destination_type": "queue",
+      "routing_key": "video.retry.120",
+      "arguments": {}
+    },
+    {
+      "source": "video-retry",
+      "vhost": "/",
+      "destination": "video_retry_10m",
+      "destination_type": "queue",
+      "routing_key": "video.retry.600",
+      "arguments": {}
     }
   ],
-  "policies": [],
+  "policies": [
+    {
+      "name": "video-queues-lazy",
+      "vhost": "/",
+      "pattern": "^video(_.*)?$",
+      "apply-to": "queues",
+      "definition": {
+        "queue-mode": "lazy"
+      },
+      "priority": 0
+    },
+    {
+      "name": "video-dlq-cap",
+      "vhost": "/",
+      "pattern": "^video_dlq$",
+      "apply-to": "queues",
+      "definition": {
+        "max-length": 10000
+      },
+      "priority": 1
+    }
+  ],
   "parameters": [],
   "global_parameters": []
 }
