@@ -11,6 +11,8 @@ services:
     env_file: [ .env ]
     environment:
       - APP_ENV=${APP_ENV:-production}
+      - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     volumes:
       - ./core/storage:/app/storage
     restart: unless-stopped
