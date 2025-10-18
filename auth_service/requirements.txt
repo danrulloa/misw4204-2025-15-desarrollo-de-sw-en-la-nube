@@ -19,6 +19,7 @@ pydantic[email]
 pydantic_core==2.33.2
 pytest==8.3.5
 pytest-asyncio==1.0.0
+pytest-cov==6.0.0
 PyYAML==6.0.2
 ruff==0.11.12
 sniffio==1.3.1
@@ -26,11 +27,11 @@ starlette==0.46.2
 typing-inspection==0.4.1
 typing_extensions==4.13.2
 uvicorn==0.34.3
-uvloop==0.21.0
+# uvloop==0.21.0  # Comentado: no compatible con Windows (solo Linux/Mac)
 watchfiles==1.0.5
 websockets==15.0.1
 SQLAlchemy==2.0.41
-psycopg2-binary==2.9.10
+# psycopg2-binary==2.9.10  # Comentado: no se usa, solo asyncpg
 asyncpg==0.30.0
 greenlet==3.2.3
 python-dotenv== 1.1.1
