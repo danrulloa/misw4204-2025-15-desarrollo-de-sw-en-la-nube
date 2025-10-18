@@ -22,6 +22,38 @@ El sistema está compuesto por varios servicios orquestados con Docker:
 - **PostgreSQL**: Dos bases de datos (auth y core)
 - **Nginx**: Proxy inverso y balanceador de carga
 
+### Flujo de Procesamiento de Videos
+
+El sistema implementa un flujo asíncrono de procesamiento de videos:
+
+1. **Upload (API Core)**: Al subir un video vía `POST /api/videos/upload`:
+   - Se guarda el archivo en `storage/uploads/`
+   - Se crea el registro en BD con `status='processing'` y `correlation_id` único
+   - Se encola una tarea Celery con `[video_id, input_path, correlation_id]`
+
+2. **Procesamiento (Worker)**:
+   - Recibe la tarea desde RabbitMQ
+   - Procesa el video con ffmpeg:
+     - Recorte a máximo 30 segundos
+     - Escala y relleno a 1280x720 (16:9)
+     - Elimina audio
+     - Aplica marca de agua ANB
+     - Concatena intro + video + outro (si están disponibles)
+   - Guarda el resultado en `storage/processed/`
+   - **Actualiza la BD directamente** vía `psycopg`:
+     - `status='processed'`
+     - `processed_path` (ruta del archivo final)
+     - `processed_at` (timestamp)
+     - Mantiene el `correlation_id` para trazabilidad
+
+3. **Consulta**: Los videos procesados están disponibles vía `GET /api/videos` y endpoints públicos.
+
+**Variables de entorno clave:**
+- `UPLOAD_DIR=/app/storage/uploads` (API y Worker)
+- `PROCESSED_DIR=/app/storage/processed` (API y Worker)
+- `WORKER_INPUT_PREFIX=/mnt/uploads` (mapeo de paths del API al Worker)
+- `DATABASE_URL` (Worker: conexión directa a `anb-core-db`)
+
 ## Requisitos
 
 - Docker Desktop (o Docker Engine) instalado y corriendo

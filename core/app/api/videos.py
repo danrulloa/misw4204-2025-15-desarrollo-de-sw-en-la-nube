@@ -118,6 +118,12 @@ async def upload_video(
 
     input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
     correlation_id = f"req-{uuid.uuid4().hex[:12]}"
+    
+    # Persistir correlation_id y marcar en procesamiento antes de encolar
+    video.correlation_id = correlation_id
+    video.status = VideoStatus.processing
+    await db.commit()
+    await db.refresh(video)
 
     try:
         payload = {
@@ -132,6 +138,10 @@ async def upload_video(
         finally:
             pub.close()
     except Exception as e:
+        # Si falla el encolado, revertir a uploaded para permitir reintento
+        video.status = VideoStatus.uploaded
+        video.correlation_id = None
+        await db.commit()
         raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
     response.headers["Location"] = f"/api/videos/{video.id}"
