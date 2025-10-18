@@ -10,39 +10,33 @@ import app.api.videos as videos_mod
 class TestVideoEndpoints:
     """Tests que realmente ejecutan la lógica de app/api/videos.py."""
 
-    # ========= helpers comunes =========
     def _auth(self, make_token):
         return {"Authorization": f"Bearer {make_token(user_id='test-user-1')}"}
 
     class _DummyStorage:
         def save(self, fileobj, filename, content_type):
-            # Simula que persistimos y devolvemos ruta relativa /uploads/...
             return f"/uploads/{filename}"
 
     class _DummyPublisher:
         def __init__(self):
             self.closed = False
 
-        def publish_video(self, payload):  # no-op, pero valida que se pueda llamar
+        def publish_video(self, payload): 
             assert "video_id" in payload and "input_path" in payload and "correlation_id" in payload
 
         def close(self):
             self.closed = True
 
-    # ========= tests =========
 
     def test_upload_video_happy_path(self, client, monkeypatch, make_token):
         """POST /api/videos/upload: sube archivo válido -> 201 y cubre storage + Rabbit."""
-        # parchea settings para formato y tamaño
         monkeypatch.setattr(videos_mod.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})
         monkeypatch.setattr(videos_mod.settings, "MAX_UPLOAD_SIZE_MB", 50)
         monkeypatch.setattr(videos_mod.settings, "WORKER_INPUT_PREFIX", "/worker/in")
 
-        # parchea storage y publisher
         monkeypatch.setattr(videos_mod, "get_storage", lambda: self._DummyStorage())
         monkeypatch.setattr(videos_mod, "RabbitPublisher", self._DummyPublisher)
 
-        # Fake AsyncSession con los métodos que usa upload_video
         class _UploadSession:
             def __init__(self):
                 self._added = None
@@ -56,14 +50,12 @@ class TestVideoEndpoints:
                 self.committed = True
 
             async def refresh(self, obj):
-                # Asegura que haya un id para construir Location y la respuesta
                 if getattr(obj, "id", None) is None:
                     obj.id = uuid.uuid4()
                 self.refreshed = True
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _UploadSession()
 
-        # arma archivo chico y válido
         file_bytes = b"\x00\x01video"
         files = {"video_file": ("jugada.mp4", io.BytesIO(file_bytes), "video/mp4")}
         data = {"title": "Mi video"}
@@ -75,18 +67,15 @@ class TestVideoEndpoints:
         assert "video_id" in body and "task_id" in body
         assert "Location" in resp.headers and resp.headers["Location"].startswith("/api/videos/")
 
-        # limpia override
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_upload_video_rechaza_formato(self, client, monkeypatch, make_token):
         """Formato no permitido -> 400 (ejecuta _validate_ext_and_size)."""
-        monkeypatch.setattr(videos_mod.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})  # solo mp4
+        monkeypatch.setattr(videos_mod.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"}) 
         monkeypatch.setattr(videos_mod.settings, "MAX_UPLOAD_SIZE_MB", 50)
-        # storage y publisher igual se parchean, pero no deberían usarse si falla antes
         monkeypatch.setattr(videos_mod, "get_storage", lambda: self._DummyStorage())
         monkeypatch.setattr(videos_mod, "RabbitPublisher", self._DummyPublisher)
 
-        # sesión dummy por si acaso
         class _Sess:
             def add(self, o): ...
             async def commit(self): ...
@@ -102,7 +91,6 @@ class TestVideoEndpoints:
 
     def test_list_videos_ok(self, client, monkeypatch, make_token):
         """GET /api/videos: lista propia -> 200 y mapea schema."""
-        # Fake fila "Video" mínima
         v = type(
             "V",
             (),
@@ -116,7 +104,6 @@ class TestVideoEndpoints:
         )()
 
         class _Res:
-            # simula result.scalars().all()
             def scalars(self):
                 class _S:
                     def all(_): return [v]
@@ -208,7 +195,7 @@ class TestVideoEndpoints:
         data = resp.json()
         assert data["video_id"] == str(vid.id)
         assert data["title"] == "MVP"
-        assert data["votes"] == 0  # el endpoint fija 0 por ahora
+        assert data["votes"] == 0 
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_delete_video_ya_procesado(self, client, make_token):
@@ -238,16 +225,13 @@ class TestVideoEndpoints:
 
     def test_delete_video_ok(self, client, monkeypatch, make_token, tmp_path):
         """DELETE: propio y no procesado -> 200; cubre borrado físico y commit."""
-        # Prepara rutas “reales” para cubrir _abs_storage_path y unlink
         upload_dir = tmp_path / "uploads"
         processed_dir = tmp_path / "processed"
         upload_dir.mkdir()
         processed_dir.mkdir()
-        # ajusta settings
         monkeypatch.setattr(videos_mod.settings, "UPLOAD_DIR", str(upload_dir))
         monkeypatch.setattr(videos_mod.settings, "PROCESSED_DIR", str(processed_dir))
 
-        # Crea archivos que el endpoint intentará borrar
         orig = upload_dir / "v1.mp4"
         proc = processed_dir / "v1.m3u8"
         orig.write_bytes(b"x")
@@ -293,7 +277,6 @@ class TestVideoEndpoints:
 
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
-    # ====== sanity checks de auth 401 (mantén uno, no cuatro) ======
     def test_requires_auth_401(self, client):
         assert client.get("/api/videos").status_code == status.HTTP_401_UNAUTHORIZED
         assert client.get("/api/videos/abc").status_code == status.HTTP_401_UNAUTHORIZED

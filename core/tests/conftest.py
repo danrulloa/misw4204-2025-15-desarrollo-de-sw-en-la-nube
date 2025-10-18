@@ -23,7 +23,6 @@ def client():
 def patch_env(monkeypatch):
     monkeypatch.setenv("ACCESS_TOKEN_SECRET_KEY", "test-secret-key-12345")
     monkeypatch.setenv("ALGORITHM", "HS256")
-    # aunque no las usemos por el patch de decode, las dejamos por consistencia
     monkeypatch.setenv("AUTH_AUDIENCE", "anb-api")
     monkeypatch.setenv("AUTH_ISSUER", "anb-auth")
 
