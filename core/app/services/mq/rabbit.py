@@ -88,10 +88,19 @@ class RabbitPublisher:
         if isinstance(payload, dict) and 'correlation_id' in payload:
             headers['correlation_id'] = payload.get('correlation_id')
 
+        # Build positional args for the task: (video_id?, input_path, correlation_id?)
+        args_list = []
+        if isinstance(payload, dict) and 'video_id' in payload:
+            args_list.append(payload.get('video_id'))
+        # input_path is required
+        args_list.append(input_path)
+        if isinstance(payload, dict) and 'correlation_id' in payload:
+            args_list.append(payload.get('correlation_id'))
+
         # Use Celery send_task to ensure worker recognizes the message
         self._celery.send_task(
             'tasks.process_video.run',
-            args=[input_path],
+            args=args_list,
             kwargs={},
             queue='video_tasks',
             routing_key='video',
