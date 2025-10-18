@@ -184,6 +184,9 @@ services:
       start_period: 25s
     networks:
       - internal
+      - public
+    ports:
+      - "5432:5432"
 
 networks:
   public:

@@ -5,12 +5,14 @@ import os
 import shutil
 import logging
 from pathlib import Path
+import psycopg
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, name="tasks.process_video.run")
-def run(self, input_path: str):
+def run(self, *args, **kwargs):
     """Process a video file:
 
     Steps:
@@ -25,6 +27,39 @@ def run(self, input_path: str):
 
     The implementation uses ffmpeg called via subprocess.
     """
+
+    # Accept either (video_id, input_path, correlation_id) or (video_id, input_path) or (input_path,)
+    video_id = None
+    input_path = None
+    correlation_id = None
+    if len(args) >= 3:
+        video_id = args[0]
+        input_path = args[1]
+        correlation_id = args[2]
+    elif len(args) == 2:
+        # could be (video_id, input_path)
+        video_id = args[0]
+        input_path = args[1]
+    elif len(args) == 1:
+        input_path = args[0]
+    else:
+        # try kwargs
+        video_id = kwargs.get('video_id') or kwargs.get('id')
+        input_path = kwargs.get('input_path') or kwargs.get('path')
+        correlation_id = kwargs.get('correlation_id')
+
+    logger.info(
+        'Starting video processing task video_id=%s correlation_id=%s input_path=%s args=%s kwargs=%s',
+        video_id,
+        correlation_id,
+        input_path,
+        args,
+        kwargs,
+    )
+
+    if not input_path:
+        raise ValueError('process_video.run requires input_path as first or second positional argument')
+
     # Keep original incoming path (from API message) for later mirroring
     original_input = input_path
     video_src = Path(input_path)
@@ -35,7 +70,13 @@ def run(self, input_path: str):
         video_src = Path(upload_dir) / rel
 
     # Log which path we'll use inside the worker for debugging
-    logger.info('Input original path=%s ; worker-resolved path=%s', original_input, video_src)
+    logger.info(
+        'Input original path=%s ; worker-resolved path=%s ; video_id=%s ; correlation_id=%s',
+        original_input,
+        video_src,
+        video_id,
+        correlation_id,
+    )
     if not video_src.exists():
         logger.error('Input video not found: %s (resolved=%s)', original_input, video_src)
         raise self.retry(exc=FileNotFoundError(f'Input not found: {original_input}'), countdown=10, max_retries=2)
@@ -50,7 +91,13 @@ def run(self, input_path: str):
     logger.info('Using assets: inout=%s watermark=%s', inout_path, watermark_path)
 
     tmpdir = Path(tempfile.mkdtemp(prefix='proc_'))
-    logger.info('Processing video %s in tmpdir %s', input_path, tmpdir)
+    logger.info(
+        'Processing video %s (video_id=%s correlation_id=%s) in tmpdir %s',
+        input_path,
+        video_id,
+        correlation_id,
+        tmpdir,
+    )
 
     try:
         # Prepare list of inputs and build filter_complex dynamically
@@ -212,7 +259,6 @@ def run(self, input_path: str):
             str(out_file)
         ])
 
-        logger.info('Running ffmpeg command: %s', ' '.join(cmd))
         # Run and capture output
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
@@ -247,6 +293,36 @@ def run(self, input_path: str):
         except Exception as e:
             logger.error('Failed to move output to final location: %s', e)
             raise self.retry(exc=e, countdown=10, max_retries=2)
+
+        # Update database record for the video if video_id is available (direct DB update)
+        db_url = os.getenv('DATABASE_URL') or os.getenv('DB_URL')
+        # Fallback to canonical host used in compose if not provided
+        if not db_url:
+            db_url = 'postgresql://anb_user:anb_pass@anb-core-db:5432/anb_core'
+        # If the URL is async style (postgresql+asyncpg://) convert to sync dsn for psycopg
+        if db_url.startswith('postgresql+asyncpg://'):
+            db_url = db_url.replace('postgresql+asyncpg://', 'postgresql://', 1)
+
+        if video_id:
+            try:
+                logger.info(
+                    'Updating DB for video id=%s correlation_id=%s processed_path=%s',
+                    video_id,
+                    correlation_id,
+                    output_path,
+                )
+                with psycopg.connect(db_url, autocommit=True) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE videos SET status=%s, processed_path=%s, processed_at=now(), correlation_id=%s WHERE id=%s",
+                            ('processed', str(output_path), correlation_id, str(video_id))
+                        )
+                        if cur.rowcount == 0:
+                            logger.warning('No rows updated for video id=%s', video_id)
+            except Exception as e:
+                logger.exception('Failed to update DB for video id=%s correlation_id=%s', video_id, correlation_id)
+                # retry the task to attempt DB update again
+                raise self.retry(exc=e, countdown=10, max_retries=3)
 
         # Return the final path so caller (API) can register it
         return {"status": "ok", "output": str(output_path)}
