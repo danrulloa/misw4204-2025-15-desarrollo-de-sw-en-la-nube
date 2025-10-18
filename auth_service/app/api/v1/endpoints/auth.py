@@ -79,7 +79,7 @@ async def login(
     }
 
 
-@router.post("/signup")
+@router.post("/signup", status_code=201)
 #Cuando se finalize el desarrollo se debe ajustar el nivel de seguridad del registro
 async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
