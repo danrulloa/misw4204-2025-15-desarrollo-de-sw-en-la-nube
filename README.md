@@ -96,6 +96,9 @@ Una vez levantados los servicios, puedes acceder a:
 ### Herramientas de Monitoreo
 
 - **RabbitMQ Management**: http://localhost:15672 (usuario: `rabbit`, contraseña: `rabbitpass`)
+- **Grafana**: http://localhost:8080/grafana/ (usuario: `admin`, contraseña: `admin`)
+- **Prometheus**: http://localhost:9090
+- **Jaeger UI** (Tempo): http://localhost:16686
 
 ### Endpoints de la API
 
@@ -130,6 +133,53 @@ Este script crea:
 - 5 videos de muestra en diferentes estados (uploaded, processing, processed, failed)
 - 21 votos distribuidos entre los videos
 - Usuarios de prueba con datos completos
+
+## Observabilidad
+
+El proyecto incluye un stack completo de observabilidad con Grafana, Prometheus, Loki y Tempo para monitoreo, logs y traces distribuidos.
+
+### Levantar el Stack de Observabilidad
+
+```powershell
+docker compose -f compose-observability.yaml up -d
+```
+
+### Componentes del Stack
+
+- **Grafana**: Plataforma de visualización y dashboards
+- **Prometheus**: Sistema de monitoreo y alertas con métricas de:
+  - Nginx (nginx-exporter)
+  - RabbitMQ (puerto 15692)
+  - PostgreSQL Auth y Core (pg-exporter)
+  - API Principal (endpoint `/metrics`)
+- **Loki**: Sistema de agregación de logs con retención de 7 días
+- **Promtail**: Agente de recolección de logs de contenedores Docker
+- **Tempo**: Sistema de traces distribuidos con soporte OTLP y UI de Jaeger
+
+### Acceso a Herramientas de Observabilidad
+
+- **Grafana**: http://localhost:8080/grafana/ (vía Nginx) o http://localhost:3000 (directo)
+  - Usuario: `admin`
+  - Contraseña: `admin`
+- **Prometheus**: http://localhost:9090
+- **Loki**: http://localhost:3100 (API)
+- **Tempo OTLP**: http://localhost:4318 (receiver HTTP)
+- **Jaeger UI**: http://localhost:16686
+
+### Configuración
+
+Las configuraciones de cada componente se encuentran en el directorio `observability/`:
+
+- [observability/prometheus/prometheus.yml](observability/prometheus/prometheus.yml) - Targets de scraping
+- [observability/loki/config.yml](observability/loki/config.yml) - Configuración de Loki
+- [observability/promtail/config.yml](observability/promtail/config.yml) - Recolección de logs
+- [observability/tempo/config.yml](observability/tempo/config.yml) - Configuración de traces
+
+### Detener el Stack de Observabilidad
+
+```powershell
+docker compose -f compose-observability.yaml down
+```
 
 ## Colección de Postman
 
@@ -365,6 +415,12 @@ docker compose exec rabbitmq rabbitmqctl list_queues name messages consumers
 │   └── nginx.conf
 ├── rabbitmq/              # Configuración de RabbitMQ
 │   └── definitions.json   # Definición de colas/exchanges
+├── observability/         # Stack de observabilidad
+│   ├── grafana/           # Configuración de Grafana
+│   ├── prometheus/        # Configuración de Prometheus
+│   ├── loki/              # Configuración de Loki
+│   ├── promtail/          # Configuración de Promtail
+│   └── tempo/             # Configuración de Tempo
 ├── collections/           # Colección de Postman
 │   ├── ANB_Basketball_API.postman_collection.json
 │   └── ANB_Basketball_API.postman_environment.json
