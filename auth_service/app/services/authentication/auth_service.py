@@ -119,22 +119,30 @@ class AuthService:
         db: AsyncSession,
         expires_delta: Optional[timedelta] = None,
     ) -> tuple[str, datetime]:
+        if not refresh_token or not refresh_token.strip():
+            raise HTTPException(status_code=401, detail="Refresh token vacío")
+
         await AuthService.is_token_active(refresh_token, db)
 
         try:
             payload = jwt.decode(refresh_token, REFRESH_TOKEN_SECRET_KEY, algorithms=[ALGORITHM])
-            username: str = payload.get("sub")
-            if username is None:
-                raise HTTPException(status_code=401, detail="Invalid refresh token")
+            email: str = payload.get("sub")
+            if email is None:
+                raise HTTPException(status_code=401, detail="Token inválido")
         except JWTError:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+            raise HTTPException(status_code=401, detail="Token inválido")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Token inválido")
 
-        user = await UserService.get_user_by_username(username, db)
+        user = await AuthService.get_user(email, db)
+        if not user:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado")
+            
         permissions = await UserService.get_user_permissions(user.id, db)
         permission_names = [p.name for p in permissions]
 
         token_data = {
-            "sub": user.username,
+            "sub": user.email,
             "user_id": user.id,
             "tenant_id": user.tenant_id,
             "permissions": permission_names
