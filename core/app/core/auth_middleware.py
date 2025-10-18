@@ -23,12 +23,14 @@ EXCLUDED_PATHS = {
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        root_path = request.scope.get("root_path") or ""
+        rel_path = path[len(root_path):] if root_path and path.startswith(root_path) else path
 
         if path in EXCLUDED_PATHS:
             return await call_next(request)
 
         public_prefixes = ("/docs", "/redoc", "/openapi", "/public")
-        if any(path.startswith(prefix) for prefix in public_prefixes):
+        if any(rel_path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")

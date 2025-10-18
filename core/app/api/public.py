@@ -215,7 +215,10 @@ async def get_rankings(
     db: AsyncSession = Depends(get_session)
 ) -> RankingResponse:
     """Obtiene el ranking de jugadores por votos totales"""
+    
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented yet")
 
+    # Implementation below - will be enabled in future
     stmt = (
         select(
             Video.user_id,
