@@ -101,9 +101,62 @@ async def list_public_videos(
     ]
 
 
+@router.get(
+    "/videos/{video_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=PublicVideoResponse,
+    summary="Consultar video público",
+    description="Obtiene el detalle de un video público específico"
+)
+async def get_public_video(
+    video_id: str,
+    db: AsyncSession = Depends(get_session)
+) -> PublicVideoResponse:
+    """Obtiene el detalle de un video público por su ID"""
+
+    stmt = (
+        select(
+            Video.id,
+            Video.title,
+            Video.player_first_name,
+            Video.player_last_name,
+            Video.player_city,
+            Video.processed_path,
+            func.count(Vote.id).label("votes_count")
+        )
+        .outerjoin(Vote, Vote.video_id == Video.id)
+        .where(Video.id == video_id)
+        .where(Video.status == VideoStatus.processed)
+        .group_by(
+            Video.id,
+            Video.player_first_name,
+            Video.player_last_name,
+            Video.player_city
+        )
+    )
+
+    result = await db.execute(stmt)
+    video = result.one_or_none()
+
+    if not video:
+        raise HTTPException(
+            status_code=404,
+            detail="Video no encontrado o no está disponible públicamente"
+        )
+
+    return PublicVideoResponse(
+        video_id=str(video.id),
+        title=video.title,
+        username=f"{video.player_first_name} {video.player_last_name}".strip(),
+        city=video.player_city or "",
+        processed_url=None,
+        votes=video.votes_count
+    )
+
+
 @router.post(
     "/videos/{video_id}/vote",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_201_CREATED,
     response_model=VoteResponse,
     summary="Votar por un video",
     description="Permite a un usuario registrado votar por un video público"
