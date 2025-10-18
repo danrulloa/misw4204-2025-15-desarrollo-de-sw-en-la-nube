@@ -29,7 +29,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in EXCLUDED_PATHS:
             return await call_next(request)
 
-        public_prefixes = ("/docs", "/redoc", "/openapi", "/public")
+        public_prefixes = ("/docs", "/redoc", "/openapi", "/public", "/auth")
         if any(rel_path.startswith(prefix) for prefix in public_prefixes):
             return await call_next(request)
 
