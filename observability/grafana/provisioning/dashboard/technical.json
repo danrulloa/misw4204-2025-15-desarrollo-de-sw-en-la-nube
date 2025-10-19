@@ -313,6 +313,7 @@
     },
     {
       "datasource": {
+        "default": true,
         "type": "prometheus",
         "uid": "prometheus-main"
       },
@@ -378,7 +379,7 @@
               "options": {
                 "mode": "exclude",
                 "names": [
-                  "/videos/upload"
+                  "Value"
                 ],
                 "prefix": "All except:",
                 "readOnly": true
@@ -418,12 +419,18 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket{job=\"$job\", handler!=\"/metrics\"}[$__rate_interval])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-main"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(http_request_duration_seconds_sum{job=\"$job\", handler=\"/videos/upload\"}[$__rate_interval]))/sum(rate(http_request_duration_seconds_count{job=\"$job\", handler=\"/videos/upload\"}[$__rate_interval]))",
           "legendFormat": "{{handler}}",
+          "range": true,
           "refId": "A"
         }
       ],
-      "title": "Latencia p95 por handler",
+      "title": "Media de Latencia",
       "type": "timeseries"
     },
     {
@@ -500,7 +507,7 @@
     "list": [
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": "api-core",
           "value": "api-core"
         },

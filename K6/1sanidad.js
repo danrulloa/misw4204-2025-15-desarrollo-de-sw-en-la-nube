@@ -23,13 +23,7 @@ export const options = {
 let FILE_BYTES = null
 let FILE_NAME = null
 try {
-    // try to increase k6 HTTP request timeout to 10 minutes (600000 ms)
-    // this prevents the default 60s client-side timeout during large uploads
-    if (typeof http.setRequestTimeout === 'function') {
-        http.setRequestTimeout(600000)
-    } else {
-        console.warn('http.setRequestTimeout not available in this k6 version; using per-request timeout as fallback')
-    }
+   
     // normalize possible leading slash in Windows absolute path like '/D:/...'
     let normalizedPath = FILE_PATH
     if (normalizedPath.match(/^\/[A-Za-z]:\//)) {
@@ -38,7 +32,6 @@ try {
     FILE_BYTES = open(normalizedPath, 'b')
     const size = FILE_BYTES && (FILE_BYTES.byteLength || FILE_BYTES.length || 0)
     FILE_NAME = normalizedPath.split(/[\\/]/).pop()
-    console.log(`Loaded file '${normalizedPath}' (name='${FILE_NAME}', ${size} bytes) in init stage`)
 } catch (err) {
     console.error(`Init: Cannot open file ${FILE_PATH}: ${err.message}`)
     FILE_BYTES = null
@@ -50,7 +43,6 @@ export default function () {
         throw new Error('ACCESS_TOKEN environment variable is required for this script')
     }
     const token = ACCESS_TOKEN
-    console.log(`Using ACCESS_TOKEN from env (len=${token.length})`)
 
     if (!FILE_BYTES) {
         throw new Error(`No file bytes available for ${FILE_PATH}. Make sure the file exists and k6 can access it.`)
@@ -65,8 +57,6 @@ export default function () {
 
     const uploadUrl = `${BASE_URL}${UPLOAD_PATH}`
 
-    console.info(`Upload URL: ${uploadUrl}`)
-
     const params = {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -76,9 +66,6 @@ export default function () {
     }
 
     const res = http.post(uploadUrl, form, params)
-
-    console.info(`Response status: ${res.status}`)
-    console.info(`Response body: ${res.body}`)
 
     check(res, {
         'upload status ok': (r) => r.status === 201,
