@@ -31,8 +31,13 @@ scrape_configs:
     static_configs:
       - targets: ['pg-exporter-core:9187']
 
-  - job_name: api
+  - job_name: "api-auth"
+    metrics_path: /auth/metrics
+    static_configs:
+      - targets: ["anb-auth-service:8000"]
+
+  - job_name: "api-core"
     metrics_path: /metrics
     static_configs:
-      - targets: ['anb_api:8000']
+      - targets: ["anb_api:8000"]
 

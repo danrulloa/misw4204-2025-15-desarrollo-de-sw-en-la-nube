@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 
+
 from app.core.auth_middleware import AuthMiddleware
 from app.config import settings
 from app.database import Base, engine
@@ -45,9 +46,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(AuthMiddleware)  # adapta si tu middleware no recibe args
+app.add_middleware(AuthMiddleware)
 
-# Handlers de excepciones
 app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
@@ -66,6 +66,10 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-@app.on_event("startup")
-async def _startup():
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+_instrumentator = Instrumentator()
+_instrumentator.instrument(app)
+_instrumentator.expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False
+)
