@@ -219,6 +219,7 @@ services:
 
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/provisioning/dashboard:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     restart: unless-stopped
     depends_on:
