@@ -1,6 +1,7 @@
-import { sleep } from 'k6'
 import http from 'k6/http'
 import { check } from 'k6'
+
+
 
 // Configurable via environment variables
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080'
@@ -8,22 +9,27 @@ const UPLOAD_PATH = __ENV.UPLOAD_PATH || '/api/videos/upload'
 const FILE_PATH = __ENV.FILE_PATH || 'MiJugadaPostman.mp4'
 const TITLE = __ENV.TITLE || 'Tiro de tres puntos en movimiento'
 // ACCESS_TOKEN must be provided via env var (no auth calls in this script)
-const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwZWRyby5sb3BlekBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiUGVkcm8iLCJsYXN0X25hbWUiOiJMXHUwMGYzcGV6IiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYwOTY5NDM4LCJpYXQiOjE3NjA4ODMwMzgsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.c6peu5qUBGzW2xlwHOxx8ex8bWbNq1gbRHQ4jynLAPQ'
+const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwZWRyby5sb3BlekBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiUGVkcm8iLCJsYXN0X25hbWUiOiJMXHUwMGYzcGV6IiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYwOTc0MTUyLCJpYXQiOjE3NjA4ODc3NTIsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.84sgzkPlhBZNpjPncPz9fWivkWgj68PKT-FCA2VONtU'
 
 export const options = {
-   // stages: [
-   //     { duration: '10s', target: 5 },
-       // { duration: '1m', target: 10 },
-       // { duration: '10s', target: 0 },
-    //],
-    vus: 40,
-    iterations: 40,
+    stages: [
+        { duration: '1m', target: 5 }
+    ],
+    //vus: 50,
+    //iterations: 50,
 }
 
 // Load file at init stage (open() is only available in init)
 let FILE_BYTES = null
 let FILE_NAME = null
 try {
+    // try to increase k6 HTTP request timeout to 10 minutes (600000 ms)
+    // this prevents the default 60s client-side timeout during large uploads
+    if (typeof http.setRequestTimeout === 'function') {
+        http.setRequestTimeout(600000)
+    } else {
+        console.warn('http.setRequestTimeout not available in this k6 version; using per-request timeout as fallback')
+    }
     // normalize possible leading slash in Windows absolute path like '/D:/...'
     let normalizedPath = FILE_PATH
     if (normalizedPath.match(/^\/[A-Za-z]:\//)) {
@@ -65,6 +71,8 @@ export default function () {
         headers: {
             Authorization: `Bearer ${token}`,
         },
+        // per-request timeout fallback (ms) for k6 versions without setRequestTimeout
+        timeout: 600000,
     }
 
     const res = http.post(uploadUrl, form, params)
@@ -73,7 +81,7 @@ export default function () {
     console.info(`Response body: ${res.body}`)
 
     check(res, {
-        'upload status ok': (r) => r.status === 200 || r.status === 201,
+        'upload status ok': (r) => r.status === 201,
     })
 
 }
