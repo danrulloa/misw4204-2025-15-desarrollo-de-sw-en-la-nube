@@ -13,8 +13,8 @@ const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
 
 export const options = {
     stages: [
-        { duration: '3m', target: 10 }, // 100, 200, 300
-        { duration: '5m', target: 10 }
+        { duration: '3m', target: 6 }, // 100, 200, 300
+        { duration: '5m', target: 6 }
     ],
 }
 
