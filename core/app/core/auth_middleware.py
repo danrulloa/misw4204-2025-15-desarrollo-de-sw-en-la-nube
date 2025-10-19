@@ -17,7 +17,8 @@ EXCLUDED_PATHS = {
     "/redoc",
     "/openapi.json",
     "/docs/oauth2-redirect",
-    "/nginx-health"
+    "/nginx-health",
+    "/metrics"
 }
 
 class AuthMiddleware(BaseHTTPMiddleware):

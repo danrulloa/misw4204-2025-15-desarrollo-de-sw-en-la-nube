@@ -9,11 +9,11 @@ from app.core.auth_middleware import AuthMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()          
+    await init_db()
     try:
         yield
     finally:
-        await close_db()  
+        await close_db()
 
 app = FastAPI(
     lifespan=lifespan,
@@ -32,10 +32,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-app.add_middleware(AuthMiddleware) 
+app.add_middleware(AuthMiddleware)
 
 app.include_router(api_router, prefix="/auth/api/v1")
 
-@app.on_event("startup")
-async def _startup():
-    Instrumentator().instrument(app).expose(app, endpoint="/auth/metrics", include_in_schema=False)
+_instrumentator = Instrumentator()
+_instrumentator.instrument(app)
+_instrumentator.expose(
+    app,
+    endpoint="/auth/metrics",
+    include_in_schema=False
+)
