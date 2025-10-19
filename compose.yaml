@@ -31,6 +31,14 @@ services:
         condition: service_healthy
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   anb-auth-service:
     build:
@@ -58,6 +66,14 @@ services:
         condition: service_healthy
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   nginx:
     image: nginx:1.25-alpine
@@ -91,6 +107,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   rabbitmq:
     image: rabbitmq:3.10-management
@@ -114,6 +138,14 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   worker:
     build:
@@ -142,6 +174,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   anb-auth-db:
     image: postgres:15-alpine
@@ -163,6 +203,14 @@ services:
       retries: 10
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
  
   anb-core-db:
     image: postgres:15-alpine
@@ -188,6 +236,14 @@ services:
       - public
     ports:
       - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1024M
+        reservations:
+          cpus: '0.50'
+          memory: 512M
 
 #####################observavilidad 
   prometheus:
@@ -203,6 +259,14 @@ services:
       - anb-core-db
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '1.00'
+          memory: 1024M
+        reservations:
+          cpus: '0.50'
+          memory: 512M
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -227,6 +291,14 @@ services:
         condition: service_started
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   nginx-exporter:
     image: nginx/nginx-prometheus-exporter:0.11.0
@@ -238,6 +310,14 @@ services:
       - nginx
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   pg_exporter_auth:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -249,6 +329,14 @@ services:
       - anb-auth-db
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   pg_exporter_core:
     image: prometheuscommunity/postgres-exporter:v0.15.0
@@ -260,6 +348,14 @@ services:
       - anb-core-db
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -273,6 +369,14 @@ services:
     restart: unless-stopped
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
   loki:
     image: grafana/loki:2.9.4
     command: -config.file=/etc/loki/config.yml
@@ -281,6 +385,14 @@ services:
       - loki_data:/loki
     restart: unless-stopped
     networks: [internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   promtail:
     image: grafana/promtail:2.9.4
@@ -294,6 +406,14 @@ services:
       - loki
     restart: unless-stopped
     networks: [internal]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 networks:
   public:
     name: anb-public
