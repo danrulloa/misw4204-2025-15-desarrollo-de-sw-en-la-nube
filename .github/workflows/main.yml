@@ -16,6 +16,8 @@ jobs:
       - name: Debug CWD
         run: |
           echo "CWD: $PWD"
+          cd ./core
+          echo "CWD: $PWD"
           ls -la
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
