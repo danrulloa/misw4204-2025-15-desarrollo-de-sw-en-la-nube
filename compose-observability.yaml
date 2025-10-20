@@ -1,0 +1,97 @@
+# docker-compose.yml
+# Observability stack: Grafana + Prometheus + Loki + Promtail + Tempo (OTel)
+# Puertos expuestos:
+# - Grafana:     http://localhost:3000  (user: admin / pass: admin)
+# - Prometheus:  http://localhost:9090
+# - Loki:        http://localhost:3100
+# - Tempo OTLP:  http://localhost:4318  (receiver traces y metrics OTLP HTTP)
+# - Tempo Jaeger: http://localhost:16686 (UI de Jaeger empotrada)
+
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: nginx-proxy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - proxy_temp:/var/tmp/nginx
+      - proxy_logs:/var/log/nginx
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_FEATURE_TOGGLES_ENABLE=tempoApmTable,tempoServiceGraph
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: ["-config.file=/etc/tempo/config.yml"]
+    ports:
+      - "4318:4318"   # OTLP HTTP receiver
+      - "4317:4317"   # OTLP gRPC (opcional)
+      - "16686:16686" # Jaeger UI
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo_data:/var/tempo
+    restart: unless-stopped
+
+volumes:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  proxy_temp:
+  proxy_logs:

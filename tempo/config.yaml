@@ -1,0 +1,53 @@
+
+# ---------------------------------------
+# tempo/config.yml
+# ---------------------------------------
+# Tempo con almacenamiento local y receptor OTLP (HTTP y gRPC).
+
+---
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+
+query_frontend:
+  max_outstanding_requests: 100
+
+compactor:
+  compaction:
+    block_retention: 48h
+
+metrics_generator:
+  registry: prometheus
+  storage:
+    path: /var/tempo/generator/wal
+  processor:
+    service_graphs:
+      enabled: true
+    span_metrics:
+      enabled: true
+
+# Habilita Jaeger UI embebida para inspección rápida
+jaeger:
+  storage:
+    backend: badger
+    badger:
+      directory: /var/tempo/jaeger
+      ephemeral: true
+  query:
+    enabled: true
+    # UI en 16686

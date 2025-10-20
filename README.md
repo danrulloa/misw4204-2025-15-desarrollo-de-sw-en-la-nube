@@ -271,4 +271,4 @@ nginx:
    docker compose logs -f worker
    ```
 
-3. Verificar colas de RabbitMQ en http://localhost:15672
+3. Verificar colas de RabbitMQ en http://localhost:8080/rabbitmq

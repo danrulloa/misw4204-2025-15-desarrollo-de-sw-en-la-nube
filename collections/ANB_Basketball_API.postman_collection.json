@@ -1,0 +1,977 @@
+{
+	"info": {
+		"_postman_id": "anb-basketball-api-2025",
+		"name": "ANB Basketball API - Complete Collection",
+		"description": "Colección completa para probar todos los endpoints de la API de videos y votaciones de baloncesto.\n\n## Flujo de Prueba End-to-End\n\n1. **Autenticación**\n   - Registrar usuario (signup)\n   - Iniciar sesión (login) - guarda token automáticamente\n\n2. **Gestión de Videos**\n   - Subir video (requiere autenticación)\n   - Listar mis videos\n   - Consultar video específico\n   - Eliminar video\n\n3. **Endpoints Públicos**\n   - Listar videos públicos (con/sin filtro de ciudad)\n   - Consultar video público específico\n   - Votar por un video\n   - Ver rankings (con/sin filtro de ciudad)\n\n## Variables de Entorno\n\nLa colección usa variables que se actualizan automáticamente:\n- `base_url`: http://localhost\n- `access_token`: Se guarda automáticamente al hacer login\n- `video_id`: Se guarda al subir un video",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Autenticación",
+			"item": [
+				{
+					"name": "Registrar Usuario (Signup)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201 Created', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('user_id', response.user_id);",
+									"    console.log('Usuario registrado con ID:', response.user_id);",
+									"    ",
+									"    pm.test('Response has user_id', function () {",
+									"        pm.expect(response).to.have.property('user_id');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"first_name\": \"{{first_name}}\",\n  \"last_name\": \"{{last_name}}\",\n  \"city\": \"{{city}}\",\n  \"country\": \"Colombia\",\n  \"password1\": \"{{user_password}}\",\n  \"password2\": \"{{user_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/api/v1/signup",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"api",
+								"v1",
+								"signup"
+							]
+						},
+						"description": "Registra un nuevo usuario en el sistema.\n\n**Datos de ejemplo:**\n- Email: pedro.lopez@example.com\n- Password: StrongPass123\n- First Name: Pedro\n- Last Name: López\n- City: Bogotá\n\n**Código HTTP esperado:** 201 Created"
+					},
+					"response": []
+				},
+				{
+					"name": "Iniciar Sesión (Login)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('access_token', response.access_token);",
+									"    pm.environment.set('refresh_token', response.refresh_token);",
+									"    console.log('Token guardado exitosamente');",
+									"    console.log('Token expira:', response.expires_in_access);",
+									"    ",
+									"    pm.test('Response has access_token', function () {",
+									"        pm.expect(response).to.have.property('access_token');",
+									"        pm.expect(response).to.have.property('refresh_token');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-www-form-urlencoded"
+							}
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "username",
+									"value": "{{user_email}}",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "{{user_password}}",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/api/v1/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"api",
+								"v1",
+								"login"
+							]
+						},
+						"description": "Inicia sesión y obtiene tokens de acceso.\n\n**El access_token se guarda automáticamente** en las variables de entorno y se usa en las siguientes peticiones.\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Refrescar Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('access_token', response.access_token);",
+									"    console.log('Token refrescado exitosamente');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/api/v1/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"api",
+								"v1",
+								"refresh"
+							]
+						},
+						"description": "Refresca el access token usando el refresh token."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints de autenticación y gestión de sesiones."
+		},
+		{
+			"name": "2. Gestión de Videos",
+			"item": [
+				{
+					"name": "Subir Video",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201 Created', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set('video_id', response.video_id);",
+									"    pm.environment.set('task_id', response.task_id);",
+									"    console.log('Video subido con ID:', response.video_id);",
+									"    console.log('Task ID:', response.task_id);",
+									"    ",
+									"    pm.test('Response has video_id and task_id', function () {",
+									"        pm.expect(response).to.have.property('video_id');",
+									"        pm.expect(response).to.have.property('task_id');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "video_file",
+									"type": "file",
+									"src": "/path/to/your/video.mp4",
+									"description": "Reemplazar con ruta absoluta a un archivo .mp4 válido"
+								},
+								{
+									"key": "title",
+									"value": "Tiro de tres puntos en movimiento",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/videos/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"videos",
+								"upload"
+							]
+						},
+						"description": "Sube un video al sistema.\n\n**Importante:**\n- Requiere autenticación (Bearer token)\n- El video debe ser formato .mp4\n- Máximo 50MB\n- Los datos del jugador (first_name, last_name, city) se extraen automáticamente del JWT\n\n**El video_id se guarda automáticamente** para usar en otras peticiones.\n\n**Código HTTP esperado:** 201 Created"
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Mis Videos",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Total de videos:', response.length);",
+									"    ",
+									"    if (response.length > 0) {",
+									"        pm.test('Response has video data', function () {",
+									"            pm.expect(response[0]).to.have.property('video_id');",
+									"            pm.expect(response[0]).to.have.property('title');",
+									"            pm.expect(response[0]).to.have.property('status');",
+									"        });",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/videos?limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"videos"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Número máximo de videos a retornar"
+								},
+								{
+									"key": "offset",
+									"value": "0",
+									"description": "Offset para paginación"
+								}
+							]
+						},
+						"description": "Lista todos los videos del usuario autenticado.\n\nMuestra el estado de procesamiento de cada video:\n- uploaded: Subido, pendiente de procesamiento\n- processing: En procesamiento\n- processed: Listo para visualización\n- failed: Error en procesamiento\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Consultar Video Específico",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Video:', response.title);",
+									"    console.log('Estado:', response.status);",
+									"    console.log('Votos:', response.votes);",
+									"    ",
+									"    pm.test('Response has video details', function () {",
+									"        pm.expect(response).to.have.property('video_id');",
+									"        pm.expect(response).to.have.property('title');",
+									"        pm.expect(response).to.have.property('status');",
+									"        pm.expect(response).to.have.property('votes');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/videos/{{video_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"videos",
+								"{{video_id}}"
+							]
+						},
+						"description": "Consulta los detalles de un video específico.\n\nUsa el `video_id` guardado automáticamente al subir un video.\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Eliminar Video",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Video eliminado:', response.video_id);",
+									"    ",
+									"    pm.test('Response confirms deletion', function () {",
+									"        pm.expect(response).to.have.property('message');",
+									"        pm.expect(response).to.have.property('video_id');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/videos/{{video_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"videos",
+								"{{video_id}}"
+							]
+						},
+						"description": "Elimina un video.\n\nSolo el propietario del video puede eliminarlo.\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints para gestionar videos (privados, requieren autenticación)."
+		},
+		{
+			"name": "3. Endpoints Públicos",
+			"item": [
+				{
+					"name": "Listar Videos Públicos",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK or 501 Not Implemented', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 501]);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Videos públicos encontrados:', response.length);",
+									"    ",
+									"    if (response.length > 0) {",
+									"        console.log('Primer video:', response[0].title);",
+									"        console.log('Votos:', response[0].votes);",
+									"        ",
+									"        pm.test('Response has public video data', function () {",
+									"            pm.expect(response[0]).to.have.property('video_id');",
+									"            pm.expect(response[0]).to.have.property('title');",
+									"            pm.expect(response[0]).to.have.property('username');",
+									"            pm.expect(response[0]).to.have.property('city');",
+									"            pm.expect(response[0]).to.have.property('votes');",
+									"        });",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/videos?limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"videos"
+							],
+							"query": [
+								{
+									"key": "city",
+									"value": "Bogotá",
+									"description": "Filtrar por ciudad (opcional)",
+									"disabled": true
+								},
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "Número máximo de videos"
+								},
+								{
+									"key": "offset",
+									"value": "0",
+									"description": "Offset para paginación"
+								}
+							]
+						},
+						"description": "Lista todos los videos públicos disponibles para votación.\n\n**Características:**\n- Solo muestra videos en estado 'processed'\n- Muestra el número de votos de cada video\n- Ordenados por número de votos (descendente)\n- Filtro opcional por ciudad\n\n**Campos retornados:**\n- video_id: ID del video\n- title: Título del video\n- username: Nombre completo del jugador (first_name + last_name)\n- city: Ciudad del jugador\n- processed_url: URL del video procesado\n- votes: Número total de votos\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Videos Públicos - Filtrado por Ciudad",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK or 501 Not Implemented', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 501]);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Videos en esta ciudad:', response.length);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/videos?city=Bogotá&limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"videos"
+							],
+							"query": [
+								{
+									"key": "city",
+									"value": "Bogotá",
+									"description": "Filtrar por ciudad"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Ejemplo de listado filtrado por ciudad.\n\nCiudades de ejemplo:\n- Bogotá\n- Medellín\n- Cali\n- Barranquilla"
+					},
+					"response": []
+				},
+				{
+					"name": "Consultar Video Público Específico",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Video:', response.title);",
+									"    console.log('Jugador:', response.username);",
+									"    console.log('Ciudad:', response.city);",
+									"    console.log('Votos:', response.votes);",
+									"    ",
+									"    pm.test('Response has public video details', function () {",
+									"        pm.expect(response).to.have.property('video_id');",
+									"        pm.expect(response).to.have.property('title');",
+									"        pm.expect(response).to.have.property('username');",
+									"        pm.expect(response).to.have.property('city');",
+									"        pm.expect(response).to.have.property('votes');",
+									"        pm.expect(response).to.have.property('processed_url');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/videos/{{video_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"videos",
+								"{{video_id}}"
+							]
+						},
+						"description": "Consulta los detalles de un video público específico.\n\n**Características:**\n- No requiere autenticación\n- Solo muestra videos en estado 'processed'\n- Incluye el número de votos\n- Incluye información del jugador\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Votar por un Video",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 201 Created or 400 Already Voted', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    console.log('Voto registrado exitosamente');",
+									"    const response = pm.response.json();",
+									"    ",
+									"    pm.test('Response confirms vote', function () {",
+									"        pm.expect(response).to.have.property('message');",
+									"    });",
+									"} else if (pm.response.code === 400) {",
+									"    const response = pm.response.json();",
+									"    if (response.detail && response.detail.includes('Ya has votado')) {",
+									"        console.log('Ya votaste por este video anteriormente');",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{access_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/videos/{{video_id}}/vote",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"videos",
+								"{{video_id}}",
+								"vote"
+							]
+						},
+						"description": "Registra un voto para un video.\n\n**Validaciones:**\n- Requiere autenticación (Bearer token)\n- Solo se puede votar por videos en estado 'processed'\n- Un usuario solo puede votar UNA VEZ por video\n- Se previenen votos duplicados a nivel de BD (UniqueConstraint)\n\n**Respuestas:**\n- 201: Voto registrado exitosamente\n- 400: Ya has votado por este video\n- 404: Video no encontrado\n- 401: Token inválido o expirado\n\n**Código HTTP esperado:** 201 Created"
+					},
+					"response": []
+				},
+				{
+					"name": "Ver Rankings",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK or 501 Not Implemented', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 501]);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Total de jugadores en el ranking:', response.total);",
+									"    ",
+									"    if (response.rankings && response.rankings.length > 0) {",
+									"        console.log('Líder:', response.rankings[0].username);",
+									"        console.log('Votos del líder:', response.rankings[0].votes);",
+									"        ",
+									"        pm.test('Response has ranking data', function () {",
+									"            pm.expect(response).to.have.property('rankings');",
+									"            pm.expect(response).to.have.property('total');",
+									"            pm.expect(response.rankings[0]).to.have.property('position');",
+									"            pm.expect(response.rankings[0]).to.have.property('username');",
+									"            pm.expect(response.rankings[0]).to.have.property('votes');",
+									"        });",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/rankings?limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"rankings"
+							],
+							"query": [
+								{
+									"key": "city",
+									"value": "Bogotá",
+									"description": "Filtrar por ciudad (opcional)",
+									"disabled": true
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Número máximo de jugadores en el ranking"
+								}
+							]
+						},
+						"description": "Obtiene el ranking de jugadores por número de votos.\n\n**Características:**\n- Agrega todos los votos de todos los videos de cada jugador\n- Ordenado por número total de votos (descendente)\n- Filtro opcional por ciudad\n- Asigna posiciones automáticamente\n\n**Campos retornados:**\n- position: Posición en el ranking (1, 2, 3...)\n- username: Nombre completo del jugador\n- city: Ciudad del jugador\n- votes: Número total de votos\n- total: Total de jugadores en el ranking\n\n**Código HTTP esperado:** 200 OK"
+					},
+					"response": []
+				},
+				{
+					"name": "Ver Rankings - Filtrado por Ciudad",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK or 501 Not Implemented', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 501]);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Jugadores en esta ciudad:', response.total);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/public/rankings?city=Bogotá&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"public",
+								"rankings"
+							],
+							"query": [
+								{
+									"key": "city",
+									"value": "Bogotá",
+									"description": "Filtrar ranking por ciudad"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Ejemplo de ranking filtrado por ciudad.\n\nÚtil para ver los mejores jugadores de cada ciudad."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints públicos para listar videos, votar y ver rankings."
+		},
+		{
+			"name": "4. Health & Docs",
+			"item": [
+				{
+					"name": "Health Check - API",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"health"
+							]
+						},
+						"description": "Verifica el estado del servicio principal de la API."
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check - Auth",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auth/api/v1/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"api",
+								"v1",
+								"status"
+							]
+						},
+						"description": "Verifica el estado del servicio de autenticación."
+					},
+					"response": []
+				},
+				{
+					"name": "API Root",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200 OK', function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								""
+							]
+						},
+						"description": "Endpoint raíz de la API con información básica."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints de utilidad para verificar el estado de los servicios."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Generar email único solo una vez al inicio de la ejecución",
+					"if (!pm.collectionVariables.get('generated_email')) {",
+					"    const uniqueEmail = `test.user.${Date.now()}@example.com`;",
+					"    pm.collectionVariables.set('generated_email', uniqueEmail);",
+					"    pm.environment.set('user_email', uniqueEmail);",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "access_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "video_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "task_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "user_email",
+			"value": "pedro.lopez@example.com",
+			"type": "string"
+		},
+		{
+			"key": "user_password",
+			"value": "StrongPass123",
+			"type": "string"
+		},
+		{
+			"key": "first_name",
+			"value": "Pedro",
+			"type": "string"
+		},
+		{
+			"key": "last_name",
+			"value": "López",
+			"type": "string"
+		},
+		{
+			"key": "city",
+			"value": "Bogotá",
+			"type": "string"
+		}
+	]
+}

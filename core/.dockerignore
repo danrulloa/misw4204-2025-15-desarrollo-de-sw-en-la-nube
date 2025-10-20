@@ -1,0 +1,40 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Archivos de Python compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Testing y coverage
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+
+# Variables de entorno locales
+.env
+
+# Archivos del sistema
+.DS_Store
+.idea/
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# Archivos subidos (se manejan con volúmenes)
+storage/uploads/*
+storage/processed/*
+!storage/uploads/.gitkeep
+!storage/processed/.gitkeep
+
+# Documentación local
+docs/
+*.md
+!README.md

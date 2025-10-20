@@ -1,0 +1,12 @@
+# Archivos de almacenamiento
+storage/uploads/*
+storage/processed/*
+!storage/uploads/.gitkeep
+!storage/processed/.gitkeep
+
+# Variables de entorno
+.env
+
+# Entorno virtual
+venv/
+.venv/
