@@ -435,7 +435,7 @@
             "uid": "prometheus-main"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95,\r\n  sum by (le) (rate(http_request_duration_seconds_bucket{job=\"$job\", handler=\"/videos/upload\"}[$__rate_interval]))\r\n)",
+          "expr": "histogram_quantile(0.95,\r\n  sum by (le) (rate(http_request_duration_seconds_handler_bucket{job=\"$job\", handler=\"/videos/upload\"}[$__rate_interval]))\r\n)",
           "hide": false,
           "instant": false,
           "legendFormat": "P95",
