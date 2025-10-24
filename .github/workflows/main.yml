@@ -1,19 +1,82 @@
-name: Build
+name: Monorepo CI (core, auth_service, worker)
 on:
   push:
     branches:
-      - main
+      - develop
+    paths:
+      - 'core/**'
+      - 'auth_service/**'
+      - 'worker/**'
+      - '.github/workflows/main.yml'
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'core/**'
+      - 'auth_service/**'
+      - 'worker/**'
+      - '.github/workflows/main.yml'
+
 jobs:
-  sonarqube:
-    name: SonarQube
+  modules:
+    name: "${{ matrix.module }}: build, test, sonar"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [core, auth_service, worker]
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.module }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - name: SonarQube Scan
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies (${{ matrix.module }})
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov aiosqlite
+
+      - name: Run tests with coverage (${{ matrix.module }})
+        env:
+          # Common test-time env for services
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          ACCESS_TOKEN_SECRET_KEY: test-ci-secret
+          REFRESH_TOKEN_SECRET_KEY: test-ci-secret
+          ALGORITHM: HS256
+          TOKEN_EXPIRE: '15'
+          REFRESH_TOKEN_EXPIRE: '1440'
+        run: |
+          if [ -d tests ]; then
+            pytest --maxfail=1 --disable-warnings -q \
+              --cov=. \
+              --cov-report=xml:coverage.xml
+          else
+            echo "No tests found in ${{ matrix.module }}; skipping pytest."
+          fi
+
+      - name: Upload coverage artifact (${{ matrix.module }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.module }}-coverage
+          path: ${{ matrix.module }}/coverage.xml
+          if-no-files-found: warn
+
+      - name: SonarQube Scan (${{ matrix.module }})
         uses: SonarSource/sonarqube-scan-action@v6
         env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectBaseDir=${{ matrix.module }}
+            -Dsonar.qualitygate.wait=true
