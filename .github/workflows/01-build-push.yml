@@ -11,8 +11,6 @@ on:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-  ROLE_ARN:   ${{ vars.AWS_ROLE_ARN }}
   REGISTRY:   ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
 
 jobs:
@@ -24,17 +22,14 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-region: ${{ vars.AWS_REGION }}
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/anb-ci-infra
-
-      - name: Configure AWS (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}  # Debe ser un ARN válido
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -59,4 +54,3 @@ jobs:
         run: |
           docker build -t $REGISTRY/anb-worker:$VERSION -t $REGISTRY/anb-worker:$VERSION-$SHORT_SHA -t $REGISTRY/anb-worker:latest app/worker
           docker push $REGISTRY/anb-worker --all-tags
-
