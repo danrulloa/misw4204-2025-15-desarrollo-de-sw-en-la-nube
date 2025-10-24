@@ -1,0 +1,59 @@
+name: 01 - Build & Push (ECR)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "app/**"
+      - "nginx/**"
+      - ".github/workflows/01-build-push.yml"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+  ROLE_ARN:   ${{ vars.AWS_ROLE_ARN }}
+  REGISTRY:   ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+
+jobs:
+  build-push:
+    name: Build & Push images
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute version vars
+        run: |
+          echo "VERSION=1.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+          echo "SHORT_SHA=$(echo ${GITHUB_SHA:-local} | cut -c1-7)" >> $GITHUB_ENV
+          echo "Using VERSION=$VERSION SHORT_SHA=$SHORT_SHA"
+
+      - name: Build & push anb-api
+        run: |
+          docker build -t $REGISTRY/anb-api:$VERSION -t $REGISTRY/anb-api:$VERSION-$SHORT_SHA -t $REGISTRY/anb-api:latest app/core
+          docker push $REGISTRY/anb-api --all-tags
+
+      - name: Build & push anb-auth
+        run: |
+          docker build -t $REGISTRY/anb-auth:$VERSION -t $REGISTRY/anb-auth:$VERSION-$SHORT_SHA -t $REGISTRY/anb-auth:latest app/auth_service
+          docker push $REGISTRY/anb-auth --all-tags
+
+      - name: Build & push anb-worker
+        run: |
+          docker build -t $REGISTRY/anb-worker:$VERSION -t $REGISTRY/anb-worker:$VERSION-$SHORT_SHA -t $REGISTRY/anb-worker:latest app/worker
+          docker push $REGISTRY/anb-worker --all-tags
+
