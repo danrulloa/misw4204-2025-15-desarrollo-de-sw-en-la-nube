@@ -6,6 +6,7 @@ on:
     paths:
       - "auth_service/**"
       - "core/**"
+      - "worker/**"
       - "nginx/**"
       - ".github/workflows/build-push-dockerhub.yml"
   workflow_dispatch:
@@ -44,9 +45,9 @@ jobs:
           context: ./core
           push: true
           tags: |
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}-${{ env.SHORT_SHA }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:${{ env.VERSION }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:latest
 
       - name: Build & push anb-auth
         uses: docker/build-push-action@v6
@@ -54,9 +55,9 @@ jobs:
           context: ./auth_service
           push: true
           tags: |
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}-${{ env.SHORT_SHA }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:latest
 
       - name: Build & push anb-worker
         uses: docker/build-push-action@v6
@@ -64,6 +65,6 @@ jobs:
           context: ./worker
           push: true
           tags: |
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:${{ env.VERSION }}-${{ env.SHORT_SHA }}
-            ${{ env.DOCKERHUB_NAMESPACE }}:latest
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:latest
