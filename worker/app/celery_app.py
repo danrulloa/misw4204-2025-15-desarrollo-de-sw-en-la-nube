@@ -10,16 +10,26 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(levelname)
 logger = logging.getLogger(__name__)
 
 
+# Subclass Celery to hold shared constants (avoids duplicating literals like 'video.dlq')
+class VideoCelery(Celery):
+    # Exchanges / routing keys used across the module
+    VIDEO_EXCHANGE = 'video'
+    VIDEO_DLX_EXCHANGE = 'video-dlx'
+    VIDEO_DLQ_ROUTING_KEY = 'video.dlq'
+    VIDEO_RETRY_EXCHANGE = 'video-retry'
+
+
 # Leer broker/backend desde variables de entorno (definen en docker-compose)
 BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'amqp://rabbit:rabbitpass@rabbitmq:5672//')
 RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'rpc://')
 
-app = Celery('video_worker', broker=BROKER_URL, backend=RESULT_BACKEND)
+# Instantiate our Celery subclass so we can reference the constants from it
+app = VideoCelery('video_worker', broker=BROKER_URL, backend=RESULT_BACKEND)
 
 # Exchanges y colas (coinciden con rabbitmq/definitions.json)
-video_ex = Exchange('video', type='direct', durable=True)
-dlx_ex = Exchange('video-dlx', type='direct', durable=True)
-retry_ex = Exchange('video-retry', type='direct', durable=True)
+video_ex = Exchange(app.VIDEO_EXCHANGE, type='direct', durable=True)
+dlx_ex = Exchange(app.VIDEO_DLX_EXCHANGE, type='direct', durable=True)
+retry_ex = Exchange(app.VIDEO_RETRY_EXCHANGE, type='direct', durable=True)
 
 video_queue = Queue(
     'video_tasks',
@@ -27,8 +37,8 @@ video_queue = Queue(
     routing_key='video',
     durable=True,
     queue_arguments={
-        'x-dead-letter-exchange': 'video-dlx',
-        'x-dead-letter-routing-key': 'video.dlq'
+        'x-dead-letter-exchange': app.VIDEO_DLX_EXCHANGE,
+        'x-dead-letter-routing-key': app.VIDEO_DLQ_ROUTING_KEY
     },
 )
 
@@ -39,17 +49,18 @@ retry_queue_60s = Queue(
     durable=True,
     queue_arguments={
         'x-message-ttl': 60000,
-        'x-dead-letter-exchange': 'video',
+        'x-dead-letter-exchange': app.VIDEO_EXCHANGE,
         'x-dead-letter-routing-key': 'video'
     },
 )
 
-dlq_queue = Queue('video_dlq', exchange=dlx_ex, routing_key='video.dlq', durable=True)
+# dlq queue uses the DLX exchange and the DLQ routing key constant
+dlq_queue = Queue('video_dlq', exchange=dlx_ex, routing_key=app.VIDEO_DLQ_ROUTING_KEY, durable=True)
 
 # Configuración de Celery para trabajar con colas durables y reintentos por TTL
 app.conf.task_queues = (video_queue, retry_queue_60s, dlq_queue)
 app.conf.task_default_queue = 'video_tasks'
-app.conf.task_default_exchange = 'video'
+app.conf.task_default_exchange = app.VIDEO_EXCHANGE
 app.conf.task_default_routing_key = 'video'
 
 app.conf.update(
@@ -103,6 +114,6 @@ def on_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs
                 'exception': str(exception),
             })
             # publicamos directamente a la exchange video-dlx con routing key video.dlq
-            producer.publish(payload, exchange='video-dlx', routing_key='video.dlq', declare=[dlq_queue])
+            producer.publish(payload, exchange=app.VIDEO_DLX_EXCHANGE, routing_key=app.VIDEO_DLQ_ROUTING_KEY, declare=[dlq_queue])
     except Exception as e:
         logger.error(f'No se pudo publicar metadata en DLQ: {e}')
