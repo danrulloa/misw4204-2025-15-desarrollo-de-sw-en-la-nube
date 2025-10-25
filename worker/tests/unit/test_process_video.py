@@ -3,6 +3,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import os
 
+import pytest
+
+# Skip these tests if celery isn't installed locally (CI will have it)
+pytest.importorskip("celery")
+
 import tasks.process_video as pv
 
 

@@ -19,9 +19,10 @@ class VideoCelery(Celery):
     VIDEO_RETRY_EXCHANGE = 'video-retry'
 
 
-# Leer broker/backend desde variables de entorno (definen en docker-compose)
-BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'amqp://rabbit:rabbitpass@rabbitmq:5672//')
-RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'rpc://')
+# Leer broker/backend desde variables de entorno (deben estar presentes)
+# No usar valores por defecto para fallar temprano si falta configuración
+BROKER_URL = os.environ['CELERY_BROKER_URL']
+RESULT_BACKEND = os.environ['CELERY_RESULT_BACKEND']
 
 # Instantiate our Celery subclass so we can reference the constants from it
 app = VideoCelery('video_worker', broker=BROKER_URL, backend=RESULT_BACKEND)
