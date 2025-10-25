@@ -41,7 +41,7 @@ jobs:
       - name: Build & push anb-api
         uses: docker/build-push-action@v6
         with:
-          context: app/core
+          context: ./core
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-api:${{ env.VERSION }}
@@ -51,7 +51,7 @@ jobs:
       - name: Build & push anb-auth
         uses: docker/build-push-action@v6
         with:
-          context: app/auth_service
+          context: ./auth_service
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}
@@ -61,7 +61,7 @@ jobs:
       - name: Build & push anb-worker
         uses: docker/build-push-action@v6
         with:
-          context: app/worker
+          context: ./worker
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}
