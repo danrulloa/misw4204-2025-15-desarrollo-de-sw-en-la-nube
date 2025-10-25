@@ -1,5 +1,6 @@
 name: Monorepo CI (core, auth_service, worker)
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop
