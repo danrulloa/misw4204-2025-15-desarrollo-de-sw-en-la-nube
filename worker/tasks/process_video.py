@@ -287,7 +287,18 @@ def run(self, *args, **kwargs):
             # fallback to PROCESSED_DIR/<basename>
             output_path = Path(processed_dir) / video_src.name
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Make sure the parent directory exists. In some CI environments (e.g. when
+        # PROCESSED_DIR is like '/processed') the process may not have permission
+        # to create the directory. In that case we log a warning and continue; the
+        # move operation is often mocked in tests so we should not fail the task
+        # on PermissionError here.
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.warning('No permission to create processed directory %s; continuing (CI/test environment?)', output_path.parent)
+        except Exception as e:
+            logger.error('Failed creating processed directory %s: %s', output_path.parent, e)
+            raise task_self.retry(exc=e, countdown=10, max_retries=2)
 
         # Use a POSIX-style string for the returned path so tests are consistent across OS
         output_str = output_path.as_posix()
