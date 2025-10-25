@@ -33,7 +33,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # Fetch full history so Sonar and coverage have proper context
           fetch-depth: 0
+          # Be explicit about the ref that triggered the workflow
+          ref: ${{ github.ref }}
+
+      - name: Show checked-out ref
+        run: |
+          echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -73,6 +81,8 @@ jobs:
           if-no-files-found: warn
 
       - name: SonarQube Scan (${{ matrix.module }})
+        # Guarantee we only scan code from the develop branch
+        if: ${{ github.ref_name == 'develop' }}
         uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
