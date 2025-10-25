@@ -7,6 +7,9 @@ from unittest import mock
 import pytest
 
 
+# Skip this suite entirely if celery isn't installed in the local environment
+pytest.importorskip("celery")
+
 MODULE_NAME = 'app.celery_app'
 
 
@@ -35,8 +38,12 @@ def test_env_broker_and_backend_applied(monkeypatch):
 
 
 def test_task_queues_and_routes_config(monkeypatch):
-    # Use defaults; just ensure reload works
-    mod = reload_module(monkeypatch)
+    # Provide required env to allow import
+    mod = reload_module(
+        monkeypatch,
+        CELERY_BROKER_URL='amqp://user:pass@host:5672/vhost',
+        CELERY_RESULT_BACKEND='rpc://',
+    )
 
     # Check default queue/exchange/routing key
     assert mod.app.conf.task_default_queue == 'video_tasks'
@@ -78,8 +85,12 @@ def test_task_queues_and_routes_config(monkeypatch):
 
 
 def test_task_failure_publishes_to_dlx(monkeypatch):
-    # Reload to get a clean module namespace
-    mod = reload_module(monkeypatch)
+    # Reload to get a clean module namespace with required env
+    mod = reload_module(
+        monkeypatch,
+        CELERY_BROKER_URL='amqp://user:pass@host:5672/vhost',
+        CELERY_RESULT_BACKEND='rpc://',
+    )
 
     # Patch Connection and Producer in the module namespace
     with mock.patch.object(mod, 'Connection') as MockConn, mock.patch.object(mod, 'Producer') as MockProducer:
