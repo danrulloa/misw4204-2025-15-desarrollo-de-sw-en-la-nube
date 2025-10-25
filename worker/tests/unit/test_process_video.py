@@ -55,7 +55,8 @@ def test_ffmpeg_failure_invokes_retry(monkeypatch):
     cp = types.SimpleNamespace(returncode=1, stdout=b"", stderr=b"boom")
     with patch("subprocess.run", return_value=cp):
         try:
-            task.run(self, "/mnt/uploads/video.mp4")
+            # Pass video_id, input_path and a correlation_id (now required)
+            task.run(self, "vid-x", "/mnt/uploads/video.mp4", "corr-x")
         except DummyRetry as e:
             assert "ffmpeg failed" in str(e)
         else:
