@@ -22,16 +22,41 @@ export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
 export AWS_SESSION_TOKEN="..."
 export AWS_REGION="us-east-1"
+aws configure set aws_access_key_id     "$AWS_ACCESS_KEY_ID" --profile lab                                
+aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile lab
+aws configure set aws_session_token     "$AWS_SESSION_TOKEN" --profile lab
+aws configure set region                us-east-1            --profile lab
+export AWS_PROFILE=lab
+export VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
 ssh-keygen -t ed25519 -f ~/.ssh/anb_lab -N ""
 ```
+
+aws ec2 describe-security-groups \                              
+  --filters Name=vpc-id,Values=$VPC_ID Name=group-name,Values='anb-*-sg' \
+  --query 'SecurityGroups[].{ID:GroupId,Name:GroupName}' --output table
+  
+terraform state rm aws_security_group.web    2>/dev/null || true
+terraform state rm aws_security_group.core   2>/dev/null || true     
+terraform state rm aws_security_group.db     2>/dev/null || true
+terraform state rm aws_security_group.worker 2>/dev/null || true
+terraform state rm aws_security_group.mq     2>/dev/null || true
+terraform state rm aws_security_group.obs    2>/dev/null || true  
+
+terraform import aws_security_group.web    sg-01cb0a8bdb9b6ef2b 
+terraform import aws_security_group.core   sg-02514540403ee6516 
+terraform import aws_security_group.db     sg-01af27cfa756c56af 
+terraform import aws_security_group.worker sg-05621f0b6ce6c29d8 
+terraform import aws_security_group.mq     sg-05ca1bcc54417ef1d 
+terraform import aws_security_group.obs    sg-02ed299e0f587147e 
 
 ## 3) Terraform (en carpeta infra/)
 ```bash
 terraform init
 terraform fmt -recursive
 terraform validate
-MYIP="$(curl -s https://checkip.amazonaws.com)/32"
-terraform apply -auto-approve   -var "ssh_public_key=$(cat ~/.ssh/anb_lab.pub)"   -var "admin_cidr=${MYIP}"   -var "az_name=us-east-1a"   -var "instance_type_web=t3.micro"   -var "instance_type_core=t3.micro"   -var "instance_type_db=t3.micro"   -var "instance_type_mq=t3.micro"   -var "instance_type_worker=t3.micro"   -var "instance_type_obs=t3.micro"
+MYIP="$(curl -s https://checkip.amazonaws.com | tr -d '\r\n')" 
+terraform plan -var "admin_cidr=${MYIP}/32"  
+terraform apply -auto-approve -var "admin_cidr=${MYIP}/32"
 terraform output -json > outputs.json
 ```
 
