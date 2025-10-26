@@ -91,7 +91,7 @@ services:
 
   anb-auth-service:
     profiles: ["core"]
-    image: ftaboadar/anb-auth:$latest
+    image: ftaboadar/anb-auth:latest
     container_name: anb-auth-service
     ports:
       - "8001:8000"                    
@@ -310,7 +310,6 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@${RABBITMQ_HOST:-rabbitmq}:5672//
       - CELERY_RESULT_BACKEND=rpc://
-      - DATABASE_URL=${DB_URL_CORE_FOR_WORKER}
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
     networks: [ internal ]

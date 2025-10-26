@@ -84,22 +84,11 @@ fi
 
 # ----- Arranque por perfil -----
 case "$ROLE" in
-  web)
-    docker compose -f "$COMPOSE_FILE" --profile web --profile obs-agent --profile obs-agent-web up -d
-    ;;
-  core)
-    docker compose -f "$COMPOSE_FILE" --profile core --profile obs-agent up -d
-    ;;
-  db)
-    docker compose -f "$COMPOSE_FILE" --profile db --profile obs-agent --profile obs-agent-db up -d
-    ;;
-  mq)
-    docker compose -f "$COMPOSE_FILE" --profile mq --profile obs-agent up -d
-    ;;
-  worker)
-    docker compose -f "$COMPOSE_FILE" --profile worker --profile obs-agent up -d
-    ;;
-  obs)
-    docker compose -f "$COMPOSE_FILE" --profile obs up -d
-    ;;
+  web)    docker compose -f "$COMPOSE_FILE" --profile web    up -d ;;
+  core)   docker compose -f "$COMPOSE_FILE" --profile core   up -d ;;
+  db)     docker compose -f "$COMPOSE_FILE" --profile db     up -d ;;
+  mq)     docker compose -f "$COMPOSE_FILE" --profile mq     up -d ;;
+  worker) docker compose -f "$COMPOSE_FILE" --profile worker up -d ;;
+  obs)    docker compose -f "$COMPOSE_FILE" --profile obs    up -d ;;
 esac
+
