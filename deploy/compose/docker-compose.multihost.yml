@@ -67,7 +67,7 @@ services:
   # ================== CORE ==================
   anb_api:
     profiles: ["core"]
-    image: *ns/anb-core:${API_TAG:-latest}
+    image: ftaboadar/anb-core:latest
     container_name: anb_api
     ports:
       - "8000:8000"                      
@@ -91,7 +91,7 @@ services:
 
   anb-auth-service:
     profiles: ["core"]
-    image: *ns/anb-auth:${AUTH_TAG:-latest}
+    image: ftaboadar/anb-auth:$latest
     container_name: anb-auth-service
     ports:
       - "8001:8000"                    
@@ -303,7 +303,7 @@ services:
   # ================== WORKER ==================
   worker:
     profiles: ["worker"]
-    image: *ns/anb-worker:${WORKER_TAG:-latest}
+    image: ftaboadar/anb-worker:latest
     container_name: worker
     env_file: [ .env ]
     environment:

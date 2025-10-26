@@ -23,7 +23,7 @@ variable "repo_url"    {
  }
 variable "repo_branch" { 
   type = string
- default = "main" 
+ default = "develop" 
  }
 variable "compose_file"{ 
   type = string
