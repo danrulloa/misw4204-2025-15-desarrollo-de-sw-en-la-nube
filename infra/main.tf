@@ -553,7 +553,8 @@ resource "aws_instance" "web" {
   depends_on                  = [aws_instance.core]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role   = "web", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = aws_instance.core.private_ip, db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
+    web_ip = "", core_ip = aws_instance.core.private_ip, db_ip = "",
+    mq_ip  = aws_instance.mq.private_ip, worker_ip = "", obs_ip = aws_instance.obs.private_ip
   })
   tags = merge(local.tags_base, { Name = "anb-web" })
   root_block_device {
@@ -571,8 +572,13 @@ resource "aws_instance" "obs" {
   vpc_security_group_ids      = [aws_security_group.obs.id]
   # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "obs", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
+    role      = "obs", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip    = "",
+    core_ip   = aws_instance.core.private_ip,
+    db_ip     = aws_instance.db.private_ip,
+    mq_ip     = aws_instance.mq.private_ip,
+    worker_ip = aws_instance.worker.private_ip,
+    obs_ip    = ""
   })
   tags = merge(local.tags_base, { Name = "anb-obs" })
   root_block_device {
