@@ -45,12 +45,14 @@ POSTGRES_USER=anb_user
 POSTGRES_PASSWORD=anb_pass
 POSTGRES_CORE_DB=anb_core
 POSTGRES_AUTH_DB=anb_auth
-DB_URL_CORE=postgresql://anb_user:anb_pass@${db_ip}:5432/anb_core
-DB_URL_AUTH=postgresql://anb_user:anb_pass@${db_ip}:5433/anb_auth
+
 ACCESS_TOKEN_SECRET_KEY = mi_clave_de_acceso_secreta
 REFRESH_TOKEN_SECRET_KEY = mi_clave_de_refresh_secreta
 TOKEN_EXPIRE = 15
 REFRESH_TOKEN_EXPIRE = 60
+DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
+DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
+
 # MQ
 RABBITMQ_DEFAULT_USER=rabbit
 RABBITMQ_DEFAULT_PASS=rabbitpass
@@ -60,6 +62,10 @@ RABBITMQ_HOST=${mq_ip}
 # WEB upstreams
 UPSTREAM_API=http://${core_ip}:8000
 UPSTREAM_AUTH=http://${core_ip}:8001
+
+# JWT & Security
+JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
+ALGORITHM=HS256
 EOF
 
 # Prometheus config solo en OBS
