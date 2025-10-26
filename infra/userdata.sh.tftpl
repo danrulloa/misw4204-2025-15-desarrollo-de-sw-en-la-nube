@@ -1,0 +1,105 @@
+#!/bin/bash
+set -eux
+
+ROLE="${role}"
+REPO_URL="${repo_url}"
+repo_branch="${repo_branch}"
+COMPOSE_FILE="${compose_file}"
+
+core_ip="${core_ip}"
+db_ip="${db_ip}"
+mq_ip="${mq_ip}"
+obs_ip="${obs_ip}"
+web_ip="${web_ip}"
+worker_ip="${worker_ip}"
+
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg lsb-release git
+install -m 0755 -d /etc/apt/keyrings || true
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$VERSION_CODENAME") stable" \
+> /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+usermod -aG docker ubuntu || true
+
+mkdir -p /opt/anb-cloud
+cd /opt/anb-cloud
+if [ ! -d .git ]; then
+  git clone "$REPO_URL" /opt/anb-cloud
+fi
+git fetch --all
+git checkout "$repo_branch"
+git reset --hard "origin/${repo_branch}"
+
+# ----- .env por rol -----
+cat > /opt/anb-cloud/.env <<EOF
+APP_ENV=production
+API_TAG=latest
+LOKI_URL=http://${obs_ip}:3100/loki/api/v1/push
+
+# CORE & AUTH DBs
+POSTGRES_USER=anb_user
+POSTGRES_PASSWORD=anb_pass
+POSTGRES_CORE_DB=anb_core
+POSTGRES_AUTH_DB=anb_auth
+DB_URL_CORE=postgresql://anb_user:anb_pass@${db_ip}:5432/anb_core
+DB_URL_AUTH=postgresql://anb_user:anb_pass@${db_ip}:5433/anb_auth
+
+# MQ
+RABBITMQ_DEFAULT_USER=rabbit
+RABBITMQ_DEFAULT_PASS=rabbitpass
+RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672//
+RABBITMQ_HOST=${mq_ip}
+
+# WEB upstreams
+UPSTREAM_API=http://${core_ip}:8000
+UPSTREAM_AUTH=http://${core_ip}:8001
+EOF
+
+# Prometheus config solo en OBS
+if [ "$ROLE" = "obs" ]; then
+  mkdir -p /opt/anb-cloud/observability/prometheus
+  cat > /opt/anb-cloud/observability/prometheus/prometheus.yml <<YAML
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: nginx
+    static_configs: [ { targets: ["${web_ip}:9113"] } ]
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+        - "${web_ip}:8080"
+        - "${core_ip}:8080"
+        - "${db_ip}:8080"
+        - "${mq_ip}:8080"
+        - "${worker_ip}:8080"
+  - job_name: postgres
+    static_configs:
+      - targets: ["${db_ip}:9187","${db_ip}:9188"]
+YAML
+fi
+
+# ----- Arranque por perfil -----
+case "$ROLE" in
+  web)
+    docker compose -f "$COMPOSE_FILE" --profile web --profile obs-agent --profile obs-agent-web up -d
+    ;;
+  core)
+    docker compose -f "$COMPOSE_FILE" --profile core --profile obs-agent up -d
+    ;;
+  db)
+    docker compose -f "$COMPOSE_FILE" --profile db --profile obs-agent --profile obs-agent-db up -d
+    ;;
+  mq)
+    docker compose -f "$COMPOSE_FILE" --profile mq --profile obs-agent up -d
+    ;;
+  worker)
+    docker compose -f "$COMPOSE_FILE" --profile worker --profile obs-agent up -d
+    ;;
+  obs)
+    docker compose -f "$COMPOSE_FILE" --profile obs up -d
+    ;;
+esac

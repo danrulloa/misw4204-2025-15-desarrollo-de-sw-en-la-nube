@@ -6,22 +6,34 @@ terraform {
 }
 
 # ========== Variables ==========
-variable "region" {
-  type    = string
-  default = "us-east-1"
-}
+variable "region"      { 
+  type = string
+ default = "us-east-1" 
+ }
+variable "key_name"    { 
+  type = string
+ description = "Nombre de Key Pair existente (p.ej. 'vockey' en AWS Academy). Vacío = sin SSH."
+ default = "vockey" 
+ }
 
-# Si el lab tiene un Key Pair llamado 'vockey', úsalo.
-# Si no, deja "" y NO se adjunta llave (sin SSH).
-variable "key_name" {
-  type        = string
-  description = "Nombre de Key Pair existente (p.ej. 'vockey' en AWS Academy). Vacío = sin SSH."
-  default     = "vockey"
-}
+# Repo / compose multihost
+variable "repo_url"    { 
+  type = string
+ default = "https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube.git" 
+ }
+variable "repo_branch" { 
+  type = string
+ default = "main" 
+ }
+variable "compose_file"{ 
+  type = string
+ default = "/opt/anb-cloud/deploy/compose/docker-compose.multihost.yml" 
+ }
 
+# Acceso a UIs (no abrimos SSH: puerto 22 no disponible en el lab)
 variable "admin_cidr" {
   type        = string
-  description = "CIDR permitido para SSH/UIs (ej: 186.80.29.7/32)."
+  description = "CIDR permitido para UIs (ej: 186.80.29.7/32)."
   default     = "0.0.0.0/0"
   validation {
     condition     = can(cidrhost(var.admin_cidr, 0))
@@ -29,118 +41,124 @@ variable "admin_cidr" {
   }
 }
 
-# Fija AMI manual si quieres (si no, usa Ubuntu 22.04 más abajo)
-variable "ami_id" {
-  type    = string
-  default = ""
-}
+# AMI fija (opcional)
+variable "ami_id" { 
+  type = string
+ default = "" 
+ }
 
-# Preferimos 1a para evitar la 1e (que a veces no soporta algunos tipos)
+# AZ preferida (evita us-east-1e por compatibilidad)
 variable "az_name" {
   type        = string
   description = "AZ preferida (ej: us-east-1a). Si no existe, se usa la primera subred del VPC."
   default     = "us-east-1a"
 }
 
-# Tipos por rol (compatibles con lab)
-variable "instance_type_web" {
-  type    = string
-  default = "t3.micro"
+# Tipos por rol (compatibles con el lab)
+variable "instance_type_web"    { 
+  type = string
+ default = "t3.micro" 
+ }
+variable "instance_type_core"   { 
+  type = string 
+  default = "t3.micro" 
+  }
+variable "instance_type_db"     { 
+  type = string  
+  default = "t3.micro" 
+  }
+variable "instance_type_mq"     { 
+  type = string 
+  default = "t3.micro" 
+  }
+variable "instance_type_worker" { 
+  type = string 
+default = "t3.micro" 
 }
-variable "instance_type_core" {
-  type    = string
-  default = "t3.micro"
-}
-variable "instance_type_db" {
-  type    = string
-  default = "t3.micro"
-}
-variable "instance_type_mq" {
-  type    = string
-  default = "t3.micro"
-}
-variable "instance_type_worker" {
-  type    = string
-  default = "t3.micro"
-}
-variable "instance_type_obs" {
-  type    = string
-  default = "t3.micro"
-}
+variable "instance_type_obs"    { 
+  type = string 
+  default = "t3.micro" 
+  }
 
 provider "aws" { region = var.region }
 
 # ========== VPC/Subred por defecto ==========
 data "aws_vpc" "default" { default = true }
 
-# Todas las subnets del VPC
+# Todas las subredes del VPC
 data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
+  filter { 
+    name = "vpc-id" 
     values = [data.aws_vpc.default.id]
-  }
+     }
 }
 
-# Subnets en la AZ preferida
+# Subredes en la AZ preferida
 data "aws_subnets" "az" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-  filter {
-    name   = "availability-zone"
-    values = [var.az_name]
-  }
+  filter { 
+    name = "vpc-id" 
+    values = [data.aws_vpc.default.id] 
+    }
+  filter { 
+    name = "availability-zone" 
+    values = [var.az_name] 
+    }
 }
 
 # Ubuntu 22.04 (Canonical)
 data "aws_ami" "ubuntu22" {
   most_recent = true
   owners      = ["099720109477"]
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
-  }
-  filter {
-    name   = "architecture"
-    values = ["x86_64"]
-  }
+  filter { 
+    name = "name"                
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"] 
+    }
+  filter { 
+    name = "virtualization-type" 
+    values = ["hvm"] 
+    }
+  filter { 
+    name = "root-device-type"    
+    values = ["ebs"] 
+    }
+  filter { 
+    name = "architecture"        
+    values = ["x86_64"] 
+    }
 }
 
 locals {
-  # Si hay subred en la AZ elegida, úsala; si no, usa la primera del VPC
   subnet_id = length(data.aws_subnets.az.ids) > 0 ? element(data.aws_subnets.az.ids, 0) : element(data.aws_subnets.default.ids, 0)
   ami_id    = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu22.id
   tags_base = { Project = "ANB", Environment = "lab" }
 }
 
 # ========== Security Groups ==========
-# Nota: sin 'egress {}' y con ignore_changes=[egress] para evitar Revoke prohibido en el lab
+# Nota: sin 'egress {}' y con ignore_changes=[egress] para evitar "Revoke" prohibido en el lab.
 
-# WEB: 80 público
+# WEB: 80 y 8080 públicos (8080 porque Nginx mapea 8080:80 en tu compose)
 resource "aws_security_group" "web" {
   name        = "anb-web-sg"
-  description = "WEB ingress 80"
+  description = "WEB ingress 80/8080"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
 
-resource "aws_security_group_rule" "web_http" {
+resource "aws_security_group_rule" "web_http_80" {
   type              = "ingress"
   security_group_id = aws_security_group.web.id
   from_port         = 80
   to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "web_http_8080" {
+  type              = "ingress"
+  security_group_id = aws_security_group.web.id
+  from_port         = 8080
+  to_port           = 8080
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
 }
@@ -150,10 +168,8 @@ resource "aws_security_group" "core" {
   name        = "anb-core-sg"
   description = "CORE ingress from WEB"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
 
 resource "aws_security_group_rule" "core_from_web_8000" {
@@ -173,25 +189,21 @@ resource "aws_security_group_rule" "core_from_web_8001" {
   source_security_group_id = aws_security_group.web.id
 }
 
-# DB: 5432 (core), 5433 (auth) desde CORE y WORKER
+# DB: 5432 (core), 5433 (auth) desde CORE y 5432 desde WORKER
 resource "aws_security_group" "db" {
   name        = "anb-db-sg"
   description = "DB ingress from CORE & WORKER"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
 
 resource "aws_security_group" "worker" {
   name        = "anb-worker-sg"
   description = "WORKER"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
 
 resource "aws_security_group_rule" "db_from_core_5432" {
@@ -224,12 +236,9 @@ resource "aws_security_group" "mq" {
   name        = "anb-mq-sg"
   description = "RabbitMQ ingress"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
-
 resource "aws_security_group_rule" "mq_from_core_5672" {
   type                     = "ingress"
   security_group_id        = aws_security_group.mq.id
@@ -260,10 +269,8 @@ resource "aws_security_group" "obs" {
   name        = "anb-obs-sg"
   description = "Observability UIs"
   vpc_id      = data.aws_vpc.default.id
-
-  lifecycle { ignore_changes = [egress] }
-
-  tags = local.tags_base
+  lifecycle   { ignore_changes = [egress] }
+  tags        = local.tags_base
 }
 resource "aws_security_group_rule" "obs_prom" {
   type              = "ingress"
@@ -290,54 +297,13 @@ resource "aws_security_group_rule" "obs_loki" {
   cidr_blocks       = [var.admin_cidr]
 }
 
-# ========== User-data: instala Docker + Compose ==========
-locals {
-  user_data_ubuntu = <<-EOF
-    #!/bin/bash
-    set -eux
-    apt-get update -y
-    apt-get install -y ca-certificates curl gnupg lsb-release
-    install -m 0755 -d /etc/apt/keyrings || true
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
-    apt-get update -y
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    systemctl enable --now docker
-    usermod -aG docker ubuntu || true
-    mkdir -p /opt/anb-cloud
-  EOF
-}
-
-# ========== EC2 por rol ==========
-resource "aws_instance" "web" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_web
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.web.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-web" })
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-  }
-}
-
-resource "aws_instance" "core" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_core
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.core.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-core" })
-  root_block_device {
-    volume_size = 40
-    volume_type = "gp3"
-  }
-}
+# ========== EC2 por rol con user-data (templatefile) ==========
+# Orden sin ciclos:
+#   DB y MQ no dependen de nadie
+#   CORE depende de DB/MQ
+#   WORKER depende de MQ
+#   WEB depende de CORE
+#   OBS no depende de otros (Prometheus se puede configurar luego)
 
 resource "aws_instance" "db" {
   ami                         = local.ami_id
@@ -346,11 +312,14 @@ resource "aws_instance" "db" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.db.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-db" })
-  root_block_device {
-    volume_size = 80
-    volume_type = "gp3"
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="db", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-db" })
+  root_block_device { 
+    volume_size = 80 
+  volume_type = "gp3" 
   }
 }
 
@@ -361,12 +330,35 @@ resource "aws_instance" "mq" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-mq" })
-  root_block_device {
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="mq", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-mq" })
+  root_block_device { 
     volume_size = 30
-    volume_type = "gp3"
-  }
+   volume_type = "gp3" 
+   }
+}
+
+resource "aws_instance" "core" {
+  ami                         = local.ami_id
+  instance_type               = var.instance_type_core
+  subnet_id                   = local.subnet_id
+  associate_public_ip_address = true
+  key_name                    = var.key_name == "" ? null : var.key_name
+  vpc_security_group_ids      = [aws_security_group.core.id]
+  depends_on                  = [aws_instance.db, aws_instance.mq]
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="core", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip="", db_ip=aws_instance.db.private_ip,
+    mq_ip=aws_instance.mq.private_ip, worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-core" })
+  root_block_device { 
+    volume_size = 40
+   volume_type = "gp3" 
+   }
 }
 
 resource "aws_instance" "worker" {
@@ -376,12 +368,35 @@ resource "aws_instance" "worker" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.worker.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-worker" })
-  root_block_device {
+  depends_on                  = [aws_instance.mq]
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="worker", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip="", db_ip="", mq_ip=aws_instance.mq.private_ip, worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-worker" })
+  root_block_device { 
     volume_size = 40
-    volume_type = "gp3"
-  }
+   volume_type = "gp3" 
+   }
+}
+
+resource "aws_instance" "web" {
+  ami                         = local.ami_id
+  instance_type               = var.instance_type_web
+  subnet_id                   = local.subnet_id
+  associate_public_ip_address = true
+  key_name                    = var.key_name == "" ? null : var.key_name
+  vpc_security_group_ids      = [aws_security_group.web.id]
+  depends_on                  = [aws_instance.core]
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="web", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip=aws_instance.core.private_ip, db_ip="", mq_ip="", worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-web" })
+  root_block_device { 
+    volume_size = 20
+     volume_type = "gp3" 
+     }
 }
 
 resource "aws_instance" "obs" {
@@ -391,12 +406,16 @@ resource "aws_instance" "obs" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.obs.id]
-  user_data                   = local.user_data_ubuntu
-  tags                        = merge(local.tags_base, { Name = "anb-obs" })
-  root_block_device {
+  # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role="obs", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
+    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+  })
+  tags = merge(local.tags_base, { Name = "anb-obs" })
+  root_block_device { 
     volume_size = 30
-    volume_type = "gp3"
-  }
+   volume_type = "gp3" 
+   }
 }
 
 # ========== Outputs ==========
@@ -410,6 +429,7 @@ output "public_ips" {
     obs    = aws_instance.obs.public_ip
   }
 }
+
 output "private_ips" {
   value = {
     web    = aws_instance.web.private_ip
