@@ -11,21 +11,63 @@ Este lab levanta **6 VMs** (EC2) con Ubuntu + Docker/Compose preinstalados (user
 - WORKER: Celery worker + cAdvisor + promtail
 - OBS: Prometheus + Grafana + Loki
 
+## Prerequisitos
+
+- Instalar el AWS Command Line Interface (AWS CLI). Para esto puede eguir [estas instrucciones](https://docs.aws.amazon.com/es_es/cli/latest/userguide/getting-started-install.html).
+- Intalar Terraform. Para esto puede seguir esta [estas instrucciones](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli).
+
 ## 1) Requisitos (AWS Academy)
-- Credenciales temporales (AWS_ACCESS_KEY_ID / SECRET / SESSION_TOKEN).
+- Credenciales temporales (AWS_ACCESS_KEY_ID / SECRET / SESSION_TOKEN). Para esto se debe iniciar el Laboratorio de aprendizaje de AWS Academy. En la pestaña de AWS Details, encuentra estos valores.
 - Ejecutar desde tu PC (CloudShell suele estar bloqueado).
 - Usar AWS `us-east-1a` y tipos `t3.micro` (o `t2.micro` si aplica).
 
 ## 2) Preparación local
+
+Abrir la terminal y ejecuta los siquientes comandos:
+
+Para bash:
+
 ```bash
 export AWS_ACCESS_KEY_ID="..."
 export AWS_SECRET_ACCESS_KEY="..."
 export AWS_SESSION_TOKEN="..."
 export AWS_REGION="us-east-1"
+```
+Si usa powershell:
+```powershell
+$env:AWS_ACCESS_KEY_ID="..."
+$env:AWS_SECRET_ACCESS_KEY="..."
+$env:AWS_SESSION_TOKEN="..."
+$env:AWS_REGION="us-east-1"
+```
+
+## 3) Llave SSH
+
+Es posible crear una nueva llave para poder conectarse con las máquinas EC2 que se van a crear, sin embargo ya por defecto hay una creada que puede desacargar desde el laboratorio de aws. Desde el mismo lugar que bajó las credenciales temporales, en la misma pestaña ```AWS details```, abajo hay un botón con el nombre de ```Download PEM```, una vez descargado el archivo por favor muevalo a su home de SSH, en mi caso con máquina windows es ```C:\Users\david\.ssh```
+
+Sino desea usar la llave vockey, puede crear una nueva
+
+```Bash
 ssh-keygen -t ed25519 -f ~/.ssh/anb_lab -N ""
 ```
 
 ## 3) Terraform (en carpeta infra/)
+
+Vaya a la carpeta del proyecto e ingrese a ```/infra```, ahí ya puede ejecutar estos comandos desde consola, recuerde ejecutar solo uno de ellos, dependiendo que llave este usando.
+
+Si usa la llave vockey ejecute este comando:
+
+```bash
+terraform init
+terraform fmt -recursive
+terraform validate
+MYIP="$(curl -s https://checkip.amazonaws.com)/32"
+terraform apply -auto-approve   -var "key_name=vockey" -var "admin_cidr=${MYIP}" -var "az_name=us-east-1a" -var "instance_type_web=t3.micro" -var "instance_type_core=t3.micro" -var "instance_type_db=t3.micro" -var "instance_type_mq=t3.micro" -var "instance_type_worker=t3.micro" -var "instance_type_obs=t3.micro"
+terraform output -json > outputs.json
+```
+
+Si creó una nueva llave use este comando:
+
 ```bash
 terraform init
 terraform fmt -recursive
@@ -35,9 +77,35 @@ terraform apply -auto-approve   -var "ssh_public_key=$(cat ~/.ssh/anb_lab.pub)" 
 terraform output -json > outputs.json
 ```
 
+Nota: Si tiene algún problema con la variable MYIP, simplemente visite ese sitio de amazon y reemplace con su ip en el parametro de esta manera, repita el comando.
+
+```
+"admin_cidr=XXX.XXX.XXX.XXX/32"
+```
+
 ## 4) Validación rápida
+
+El siguiente comando es una verificación rápida de que las EC2 se crearon y están “running”. El comando lista, vía AWS CLI, todas las instancias con el tag Project=ANB y muestra su Name y su IP pública. Esas IPs las usará en el punto 5 para las variables de los .env.
+
 ```bash
-aws ec2 describe-instances   --filters "Name=tag:Project,Values=ANB" "Name=instance-state-name,Values=running"   --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,PublicIP:PublicIpAddress}' --output table
+aws ec2 describe-instances --filters "Name=tag:Project,Values=ANB" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,PublicIP:PublicIpAddress}' --output table
+```
+
+Debe recibir una respuesta como esta:
+
+```
+---------------------------------
+|       DescribeInstances       |
++-------------+-----------------+
+|    Name     |    PublicIP     |
++-------------+-----------------+
+|  anb-web    |  3.82.143.253   |
+|  anb-mq     |  44.203.70.88   |
+|  anb-obs    |  107.20.113.2   |
+|  anb-db     |  52.70.158.187  |
+|  anb-core   |  98.94.72.184   |
+|  anb-worker |  18.204.18.6    |
++-------------+-----------------+
 ```
 
 ## 5) Despliegue contenedores (multihost)

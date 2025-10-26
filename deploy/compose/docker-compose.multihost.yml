@@ -17,11 +17,6 @@ services:
     read_only: true
     security_opt: [ "no-new-privileges:true" ]
     restart: unless-stopped
-    depends_on:
-      anb_api:
-        condition: service_healthy
-      anb-auth-service:
-        condition: service_healthy
     networks: [ internal ]
     logging:
       driver: json-file
@@ -34,7 +29,6 @@ services:
     command: [ "-nginx.scrape-uri=http://nginx-proxy:80/nginx_status" ]
     ports:
       - "9113:9113"                      
-    depends_on: [ nginx ]
     restart: unless-stopped
     networks: [ internal ]
 
@@ -93,11 +87,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 25s
-    depends_on:
-      anb-core-db:
-        condition: service_healthy
-      anb-auth-db:
-        condition: service_healthy
     networks: [ internal ]
 
   anb-auth-service:
@@ -121,9 +110,6 @@ services:
       timeout: 5s
       start_period: 25s
       retries: 5
-    depends_on:
-      anb-auth-db:
-        condition: service_healthy
     networks: [ internal ]
 
   cadvisor-core:
@@ -212,7 +198,6 @@ services:
       - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-auth-db:5432/${POSTGRES_DB_AUTH:-anb_auth}?sslmode=disable
     ports:
       - "9188:9187"
-    depends_on: [ anb-auth-db ]
     restart: unless-stopped
     networks: [ internal ]
 
@@ -224,7 +209,6 @@ services:
       - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-core-db:5432/${POSTGRES_DB_CORE:-anb_core}?sslmode=disable
     ports:
       - "9187:9187"
-    depends_on: [ anb-core-db ]
     restart: unless-stopped
     networks: [ internal ]
 
@@ -328,9 +312,6 @@ services:
       - CELERY_RESULT_BACKEND=rpc://
       - DATABASE_URL=${DB_URL_CORE_FOR_WORKER}
     command: celery -A celery_app worker --loglevel=INFO
-    depends_on:
-      rabbitmq:
-        condition: service_started
     restart: unless-stopped
     networks: [ internal ]
     logging:
@@ -364,8 +345,6 @@ services:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/provisioning/dashboard:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
     restart: unless-stopped
     networks: [ internal ]
 
