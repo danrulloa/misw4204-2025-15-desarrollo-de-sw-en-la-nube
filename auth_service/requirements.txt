@@ -41,3 +41,4 @@ passlib==1.7.4
 python-multipart==0.0.20
 bcrypt==4.3.0
 prometheus-fastapi-instrumentator
+pytest-cov
