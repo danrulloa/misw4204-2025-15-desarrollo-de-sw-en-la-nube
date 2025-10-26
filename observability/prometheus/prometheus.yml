@@ -13,31 +13,40 @@ global:
 scrape_configs:
   - job_name: prometheus
     static_configs:
-      - targets: ['prometheus:9090']
+      - targets: ['${OBS_IP}:9090']
 
   - job_name: nginx
     static_configs:
-      - targets: ['nginx-exporter:9113']
+      - targets: ['${WEB_IP}:9113']
 
   - job_name: rabbitmq
     static_configs:
-      - targets: ['rabbitmq:15692']
+      - targets: ['${MQ_IP}:15692']
 
   - job_name: postgres_auth
     static_configs:
-      - targets: ['pg-exporter-auth:9187']
+      - targets: ['${DB_IP}:9187']
 
   - job_name: postgres_core
     static_configs:
-      - targets: ['pg-exporter-core:9187']
+      - targets: ['${DB_IP}:9188']
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+        - "${WEB_IP}:8080"
+        - "${CORE_IP}:8080"
+        - "${DB_IP}:8080"
+        - "${MQ_IP}:8080"
+        - "${WORKER_IP}:8080"
 
   - job_name: "api-auth"
     metrics_path: /auth/metrics
     static_configs:
-      - targets: ["anb-auth-service:8000"]
+      - targets: ["${CORE_IP}:8001"]
 
   - job_name: "api-core"
     metrics_path: /metrics
     static_configs:
-      - targets: ["anb_api:8000"]
+      - targets: ["${CORE_IP}:8000"]
 

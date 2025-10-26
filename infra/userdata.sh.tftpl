@@ -68,27 +68,23 @@ JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
 ALGORITHM=HS256
 EOF
 
-# Prometheus config solo en OBS
+# Configurar prometheus con IPs dinámicas solo en OBS
 if [ "$ROLE" = "obs" ]; then
-  mkdir -p /opt/anb-cloud/observability/prometheus
-  cat > /opt/anb-cloud/observability/prometheus/prometheus.yml <<YAML
-global:
-  scrape_interval: 15s
-scrape_configs:
-  - job_name: nginx
-    static_configs: [ { targets: ["${web_ip}:9113"] } ]
-  - job_name: cadvisor
-    static_configs:
-      - targets:
-        - "${web_ip}:8080"
-        - "${core_ip}:8080"
-        - "${db_ip}:8080"
-        - "${mq_ip}:8080"
-        - "${worker_ip}:8080"
-  - job_name: postgres
-    static_configs:
-      - targets: ["${db_ip}:9187","${db_ip}:9188"]
-YAML
+  # Usar el archivo base y sustituir placeholders con IPs reales
+  sed -i "s/\$${WEB_IP}/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/\$${CORE_IP}/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/\$${DB_IP}/${db_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/\$${MQ_IP}/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/\$${WORKER_IP}/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/\$${OBS_IP}/${obs_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+fi
+
+# Configurar nginx con IPs dinámicas solo en WEB
+if [ "$ROLE" = "web" ]; then
+  # Generar nginx.conf con las IPs correctas
+  sed -i "s/\$${CORE_IP}/${core_ip}/g" /opt/anb-cloud/nginx/nginx.conf
+  sed -i "s/\$${MQ_IP}/${mq_ip}/g" /opt/anb-cloud/nginx/nginx.conf  
+  sed -i "s/\$${OBS_IP}/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
 fi
 
 # ----- Arranque por perfil -----
