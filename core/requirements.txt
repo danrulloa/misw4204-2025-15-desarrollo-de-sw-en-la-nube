@@ -20,7 +20,7 @@ httpx==0.27.2
 
 # Base de datos
 sqlalchemy>=2.0.36  # Actualizado para compatibilidad con Python 3.13
-# psycopg2-binary==2.9.9  # Comentado: no se usa, solo asyncpg
+psycopg2-binary==2.9.9  # Comentado: no se usa, solo asyncpg
 asyncpg==0.30.0
 python-jose==3.5.0
 
