@@ -173,7 +173,7 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.
@@ -216,3 +216,57 @@ APIRestful_backup_legacy/
 Entrega 1 - Implementacio n de una API REST escalable con orquestacio n de tareas asi ncronas.md
 Acceso Rápido - Opera 2025-10-11 23-09-19.mp4
 
+# --- Terraform (estado/descargas locales) ---
+.terraform/
+.terraform/*
+
+# Archivos de estado (usa backend remoto; nunca los subas)
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+
+# Bloqueo/diagnóstico locales
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Variables locales/secretos por entorno
+*.tfvars
+*.tfvars.json
+terraform.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Archivos de plan locales
+*.tfplan
+plan.out
+
+# Overrides locales (no compartibles)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# --- Extras útiles del lab/proyecto ---
+# Salidas generadas
+outputs.json
+
+# Claves/llaves (no subas nada sensible)
+*.pem
+*.key
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+anb_lab
+anb_lab.pub
+
+# Docker Compose overrides locales
+docker-compose.override.yml
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+.env

@@ -1,1 +1,93 @@
+name: Sonar CI Análisis
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'core/**'
+      - 'auth_service/**'
+      - 'worker/**'
+      - '.github/workflows/main.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'core/**'
+      - 'auth_service/**'
+      - 'worker/**'
+      - '.github/workflows/main.yml'
 
+jobs:
+  modules:
+    name: "${{ matrix.module }}: build, test, sonar"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [core, auth_service, worker]
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.module }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so Sonar and coverage have proper context
+          fetch-depth: 0
+          # Be explicit about the ref that triggered the workflow
+          ref: ${{ github.ref }}
+
+      - name: Show checked-out ref
+        run: |
+          echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies (${{ matrix.module }})
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov aiosqlite
+
+      - name: Run tests with coverage (${{ matrix.module }})
+        env:
+          # Common test-time env for services
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          ACCESS_TOKEN_SECRET_KEY: test-ci-secret
+          REFRESH_TOKEN_SECRET_KEY: test-ci-secret
+          ALGORITHM: HS256
+          TOKEN_EXPIRE: '15'
+          REFRESH_TOKEN_EXPIRE: '1440'
+        run: |
+          if [ -d tests ]; then
+            pytest --maxfail=1 --disable-warnings -q \
+              --cov=. \
+              --cov-report=xml:coverage.xml
+          else
+            echo "No tests found in ${{ matrix.module }}; skipping pytest."
+          fi
+
+      - name: Upload coverage artifact (${{ matrix.module }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.module }}-coverage
+          path: ${{ matrix.module }}/coverage.xml
+          if-no-files-found: warn
+
+      - name: SonarQube Scan (${{ matrix.module }})
+        # Guarantee we only scan code from the develop branch
+        if: ${{ github.ref_name == 'develop' }}
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectBaseDir=${{ matrix.module }}
+            -Dsonar.qualitygate.wait=true
