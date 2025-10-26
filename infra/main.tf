@@ -6,29 +6,29 @@ terraform {
 }
 
 # ========== Variables ==========
-variable "region"      { 
-  type = string
- default = "us-east-1" 
- }
-variable "key_name"    { 
-  type = string
- description = "Nombre de Key Pair existente (p.ej. 'vockey' en AWS Academy). Vacío = sin SSH."
- default = "vockey" 
- }
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+variable "key_name" {
+  type        = string
+  description = "Nombre de Key Pair existente (p.ej. 'vockey' en AWS Academy). Vacío = sin SSH."
+  default     = "vockey"
+}
 
 # Repo / compose multihost
-variable "repo_url"    { 
-  type = string
- default = "https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube.git" 
- }
-variable "repo_branch" { 
-  type = string
- default = "develop" 
- }
-variable "compose_file"{ 
-  type = string
- default = "/opt/anb-cloud/docker-compose.multihost.yml" 
- }
+variable "repo_url" {
+  type    = string
+  default = "https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube.git"
+}
+variable "repo_branch" {
+  type    = string
+  default = "develop"
+}
+variable "compose_file" {
+  type    = string
+  default = "/opt/anb-cloud/docker-compose.multihost.yml"
+}
 
 # Acceso a UIs (no abrimos SSH: puerto 22 no disponible en el lab)
 variable "admin_cidr" {
@@ -42,10 +42,10 @@ variable "admin_cidr" {
 }
 
 # AMI fija (opcional)
-variable "ami_id" { 
-  type = string
- default = "" 
- }
+variable "ami_id" {
+  type    = string
+  default = ""
+}
 
 # AZ preferida (evita us-east-1e por compatibilidad)
 variable "az_name" {
@@ -55,30 +55,30 @@ variable "az_name" {
 }
 
 # Tipos por rol (compatibles con el lab)
-variable "instance_type_web"    { 
-  type = string
- default = "t3.micro" 
- }
-variable "instance_type_core"   { 
-  type = string 
-  default = "t3.micro" 
-  }
-variable "instance_type_db"     { 
-  type = string  
-  default = "t3.micro" 
-  }
-variable "instance_type_mq"     { 
-  type = string 
-  default = "t3.micro" 
-  }
-variable "instance_type_worker" { 
-  type = string 
-default = "t3.micro" 
+variable "instance_type_web" {
+  type    = string
+  default = "t3.micro"
 }
-variable "instance_type_obs"    { 
-  type = string 
-  default = "t3.micro" 
-  }
+variable "instance_type_core" {
+  type    = string
+  default = "t3.micro"
+}
+variable "instance_type_db" {
+  type    = string
+  default = "t3.micro"
+}
+variable "instance_type_mq" {
+  type    = string
+  default = "t3.micro"
+}
+variable "instance_type_worker" {
+  type    = string
+  default = "t3.micro"
+}
+variable "instance_type_obs" {
+  type    = string
+  default = "t3.micro"
+}
 
 provider "aws" { region = var.region }
 
@@ -87,44 +87,44 @@ data "aws_vpc" "default" { default = true }
 
 # Todas las subredes del VPC
 data "aws_subnets" "default" {
-  filter { 
-    name = "vpc-id" 
+  filter {
+    name   = "vpc-id"
     values = [data.aws_vpc.default.id]
-     }
+  }
 }
 
 # Subredes en la AZ preferida
 data "aws_subnets" "az" {
-  filter { 
-    name = "vpc-id" 
-    values = [data.aws_vpc.default.id] 
-    }
-  filter { 
-    name = "availability-zone" 
-    values = [var.az_name] 
-    }
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+  filter {
+    name   = "availability-zone"
+    values = [var.az_name]
+  }
 }
 
 # Ubuntu 22.04 (Canonical)
 data "aws_ami" "ubuntu22" {
   most_recent = true
   owners      = ["099720109477"]
-  filter { 
-    name = "name"                
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"] 
-    }
-  filter { 
-    name = "virtualization-type" 
-    values = ["hvm"] 
-    }
-  filter { 
-    name = "root-device-type"    
-    values = ["ebs"] 
-    }
-  filter { 
-    name = "architecture"        
-    values = ["x86_64"] 
-    }
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+  filter {
+    name   = "root-device-type"
+    values = ["ebs"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
 }
 
 locals {
@@ -134,14 +134,13 @@ locals {
 }
 
 # ========== Security Groups ==========
-# Nota: sin 'egress {}' y con ignore_changes=[egress] para evitar "Revoke" prohibido en el lab.
+# Con reglas de egress explícitas para permitir conectividad a internet
 
 # WEB: 80 y 8080 públicos (8080 porque Nginx mapea 8080:80 en tu compose)
 resource "aws_security_group" "web" {
   name        = "anb-web-sg"
   description = "WEB ingress 80/8080"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 
@@ -163,12 +162,30 @@ resource "aws_security_group_rule" "web_http_8080" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
+# Reglas de egress para WEB (acceso a internet)
+resource "aws_security_group_rule" "web_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.web.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "web_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.web.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # CORE: 8000 (API), 8001 (Auth) solo desde WEB
 resource "aws_security_group" "core" {
   name        = "anb-core-sg"
   description = "CORE ingress from WEB"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 
@@ -189,12 +206,30 @@ resource "aws_security_group_rule" "core_from_web_8001" {
   source_security_group_id = aws_security_group.web.id
 }
 
+# Reglas de egress para CORE (acceso a internet)
+resource "aws_security_group_rule" "core_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.core.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "core_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.core.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # DB: 5432 (core), 5433 (auth) desde CORE y 5432 desde WORKER
 resource "aws_security_group" "db" {
   name        = "anb-db-sg"
   description = "DB ingress from CORE & WORKER"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 
@@ -202,7 +237,6 @@ resource "aws_security_group" "worker" {
   name        = "anb-worker-sg"
   description = "WORKER"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 
@@ -231,12 +265,49 @@ resource "aws_security_group_rule" "db_from_worker_5432" {
   source_security_group_id = aws_security_group.worker.id
 }
 
+# Reglas de egress para DB (acceso a internet)
+resource "aws_security_group_rule" "db_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.db.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "db_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.db.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+# Reglas de egress para WORKER (acceso a internet)
+resource "aws_security_group_rule" "worker_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.worker.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "worker_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.worker.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # MQ: 5672 desde CORE y WORKER; 15672 UI solo admin
 resource "aws_security_group" "mq" {
   name        = "anb-mq-sg"
   description = "RabbitMQ ingress"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 resource "aws_security_group_rule" "mq_from_core_5672" {
@@ -264,12 +335,30 @@ resource "aws_security_group_rule" "mq_ui_admin" {
   cidr_blocks       = [var.admin_cidr]
 }
 
+# Reglas de egress para MQ (acceso a internet)
+resource "aws_security_group_rule" "mq_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.mq.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "mq_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.mq.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # OBS: 9090, 3000, 3100 solo admin
 resource "aws_security_group" "obs" {
   name        = "anb-obs-sg"
   description = "Observability UIs"
   vpc_id      = data.aws_vpc.default.id
-  lifecycle   { ignore_changes = [egress] }
   tags        = local.tags_base
 }
 resource "aws_security_group_rule" "obs_prom" {
@@ -295,6 +384,25 @@ resource "aws_security_group_rule" "obs_loki" {
   to_port           = 3100
   protocol          = "tcp"
   cidr_blocks       = [var.admin_cidr]
+}
+
+# Reglas de egress para OBS (acceso a internet)
+resource "aws_security_group_rule" "obs_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.obs.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "obs_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.obs.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 # SSH: habilitar acceso 22/TCP para troubleshooting desde admin_cidr en TODOS los roles
@@ -368,13 +476,13 @@ resource "aws_instance" "db" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.db.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="db", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+    role   = "db", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-db" })
-  root_block_device { 
-    volume_size = 80 
-  volume_type = "gp3" 
+  root_block_device {
+    volume_size = 80
+    volume_type = "gp3"
   }
 }
 
@@ -386,14 +494,14 @@ resource "aws_instance" "mq" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="mq", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+    role   = "mq", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-mq" })
-  root_block_device { 
+  root_block_device {
     volume_size = 30
-   volume_type = "gp3" 
-   }
+    volume_type = "gp3"
+  }
 }
 
 resource "aws_instance" "core" {
@@ -405,15 +513,15 @@ resource "aws_instance" "core" {
   vpc_security_group_ids      = [aws_security_group.core.id]
   depends_on                  = [aws_instance.db, aws_instance.mq]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="core", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip="", db_ip=aws_instance.db.private_ip,
-    mq_ip=aws_instance.mq.private_ip, worker_ip="", obs_ip=""
+    role   = "core", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = "", db_ip = aws_instance.db.private_ip,
+    mq_ip  = aws_instance.mq.private_ip, worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
-  root_block_device { 
+  root_block_device {
     volume_size = 40
-   volume_type = "gp3" 
-   }
+    volume_type = "gp3"
+  }
 }
 
 resource "aws_instance" "worker" {
@@ -425,14 +533,14 @@ resource "aws_instance" "worker" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   depends_on                  = [aws_instance.mq]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="worker", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip="", db_ip="", mq_ip=aws_instance.mq.private_ip, worker_ip="", obs_ip=""
+    role   = "worker", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = "", db_ip = "", mq_ip = aws_instance.mq.private_ip, worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
-  root_block_device { 
+  root_block_device {
     volume_size = 40
-   volume_type = "gp3" 
-   }
+    volume_type = "gp3"
+  }
 }
 
 resource "aws_instance" "web" {
@@ -444,14 +552,14 @@ resource "aws_instance" "web" {
   vpc_security_group_ids      = [aws_security_group.web.id]
   depends_on                  = [aws_instance.core]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="web", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip=aws_instance.core.private_ip, db_ip="", mq_ip="", worker_ip="", obs_ip=""
+    role   = "web", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = aws_instance.core.private_ip, db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-web" })
-  root_block_device { 
+  root_block_device {
     volume_size = 20
-     volume_type = "gp3" 
-     }
+    volume_type = "gp3"
+  }
 }
 
 resource "aws_instance" "obs" {
@@ -463,14 +571,14 @@ resource "aws_instance" "obs" {
   vpc_security_group_ids      = [aws_security_group.obs.id]
   # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role="obs", repo_url=var.repo_url, repo_branch=var.repo_branch, compose_file=var.compose_file,
-    web_ip="", core_ip="", db_ip="", mq_ip="", worker_ip="", obs_ip=""
+    role   = "obs", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
   })
   tags = merge(local.tags_base, { Name = "anb-obs" })
-  root_block_device { 
+  root_block_device {
     volume_size = 30
-   volume_type = "gp3" 
-   }
+    volume_type = "gp3"
+  }
 }
 
 # ========== Outputs ==========

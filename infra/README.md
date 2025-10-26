@@ -52,10 +52,10 @@ $env:AWS_REGION="us-east-1"
 > **Tip**: crea un perfil `lab` (opcional pero recomendado):
 
 ```bash
-aws configure set aws_access_key_id     "$AWS_ACCESS_KEY_ID" --profile lab
-aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" --profile lab
-aws configure set aws_session_token     "$AWS_SESSION_TOKEN" --profile lab
-aws configure set region                us-east-1            --profile lab
+aws configure set aws_access_key_id     "$AWS_ACCESS_KEY_ID"      --profile lab
+aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"  --profile lab
+aws configure set aws_session_token     "$AWS_SESSION_TOKEN"      --profile lab
+aws configure set region                us-east-1                 --profile lab
 export AWS_PROFILE=lab
 ```
 
@@ -118,13 +118,17 @@ terraform init
 terraform fmt -recursive
 terraform validate
 
-MYIP="$(curl -s https://checkip.amazonaws.com | tr -d '
-')"
+MYIP="$(curl -s https://checkip.amazonaws.com | tr -d '')"
 terraform plan -var "admin_cidr=${MYIP}/32"
 terraform apply -auto-approve -var "admin_cidr=${MYIP}/32"
 
 terraform output -json > outputs.json
 ```
+
+> Si estas en windows ese comando de MYIP no te va a funcionar, usa este:
+> ```powershell
+> $MYIP = "$((Invoke-RestMethod "https://checkip.amazonaws.com").Trim())"
+> ```
 
 > Si `MYIP` te falla, abre https://checkip.amazonaws.com en el navegador y usa manualmente:
 >
