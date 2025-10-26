@@ -71,12 +71,23 @@ EOF
 # Configurar prometheus con IPs dinámicas solo en OBS
 if [ "$ROLE" = "obs" ]; then
   # Usar el archivo base y sustituir placeholders con IPs reales
-  sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  # Evitar ciclos: solo sustituir WEB_IP si viene no vacío
+  if [ -n "${web_ip}" ]; then
+    sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  fi
   sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__DB_IP__/${db_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  # Si no recibimos obs_ip desde Terraform, consultamos a IMDS la IP privada
+  if [ -z "${obs_ip}" ]; then
+    obs_ip_runtime="$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4 || true)"
+  else
+    obs_ip_runtime="${obs_ip}"
+  fi
+  if [ -n "$${obs_ip_runtime}" ]; then
+    sed -i "s/__OBS_IP__/$${obs_ip_runtime}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  fi
 fi
 
 # Configurar nginx con IPs dinámicas solo en WEB
