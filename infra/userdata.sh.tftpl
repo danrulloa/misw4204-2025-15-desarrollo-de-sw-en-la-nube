@@ -71,20 +71,20 @@ EOF
 # Configurar prometheus con IPs dinámicas solo en OBS
 if [ "$ROLE" = "obs" ]; then
   # Usar el archivo base y sustituir placeholders con IPs reales
-  sed -i "s/\$${WEB_IP}/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/\$${CORE_IP}/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/\$${DB_IP}/${db_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/\$${MQ_IP}/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/\$${WORKER_IP}/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/\$${OBS_IP}/${obs_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__DB_IP__/${db_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
 fi
 
 # Configurar nginx con IPs dinámicas solo en WEB
 if [ "$ROLE" = "web" ]; then
   # Generar nginx.conf con las IPs correctas
-  sed -i "s/\$${CORE_IP}/${core_ip}/g" /opt/anb-cloud/nginx/nginx.conf
-  sed -i "s/\$${MQ_IP}/${mq_ip}/g" /opt/anb-cloud/nginx/nginx.conf  
-  sed -i "s/\$${OBS_IP}/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
+  sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/nginx/nginx.conf
+  sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/nginx/nginx.conf  
+  sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
 fi
 
 # ----- Arranque por perfil -----
