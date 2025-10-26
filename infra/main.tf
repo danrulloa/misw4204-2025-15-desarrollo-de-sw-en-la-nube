@@ -27,7 +27,7 @@ variable "repo_branch" {
  }
 variable "compose_file"{ 
   type = string
- default = "/opt/anb-cloud/deploy/compose/docker-compose.multihost.yml" 
+ default = "/opt/anb-cloud/docker-compose.multihost.yml" 
  }
 
 # Acceso a UIs (no abrimos SSH: puerto 22 no disponible en el lab)
