@@ -297,6 +297,61 @@ resource "aws_security_group_rule" "obs_loki" {
   cidr_blocks       = [var.admin_cidr]
 }
 
+# SSH: habilitar acceso 22/TCP para troubleshooting desde admin_cidr en TODOS los roles
+resource "aws_security_group_rule" "web_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.web.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "core_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.core.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "db_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.db.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "mq_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.mq.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "worker_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.worker.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "obs_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.obs.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
 # ========== EC2 por rol con user-data (templatefile) ==========
 # Orden sin ciclos:
 #   DB y MQ no dependen de nadie

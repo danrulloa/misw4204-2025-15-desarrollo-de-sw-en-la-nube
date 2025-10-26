@@ -225,7 +225,6 @@ docker compose -f deploy/compose/docker-compose.multihost.yml --profile obs up -
 ---
 
 ## 7) Observabilidad
-
 - **Promtail** usa `${LOKI_URL}` y el compose ya tiene `-config.expand-env=true`.
 - **Prometheus**: ajusta `observability/prometheus/prometheus.yml` con las IPs/puertos:
 
