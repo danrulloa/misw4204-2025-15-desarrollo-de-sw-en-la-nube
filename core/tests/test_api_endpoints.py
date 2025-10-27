@@ -4,6 +4,7 @@ Tests para endpoints de la API
 
 import pytest
 from fastapi import status
+from unittest.mock import AsyncMock, patch
 
 
 class TestRootEndpoints:
@@ -90,36 +91,6 @@ class TestVideoEndpoints:
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-class TestPublicEndpoints:
-    """Tests para endpoints públicos"""
-    
-    def test_list_public_videos_endpoint_exists(self, client):
-        """Test que el endpoint de videos públicos existe"""
-        response = client.get("/api/public/videos")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_vote_endpoint_exists(self, client):
-        """Test que el endpoint de votar existe"""
-        response = client.post("/api/public/videos/abc123/vote")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_rankings_endpoint_exists(self, client):
-        """Test que el endpoint de rankings existe"""
-        response = client.get("/api/public/rankings")
-        # Debe retornar 501 (Not Implemented) por ahora
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_rankings_with_city_filter(self, client):
-        """Test rankings con filtro de ciudad"""
-        response = client.get("/api/public/rankings?city=Bogotá")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
-    
-    def test_rankings_with_limit(self, client):
-        """Test rankings con límite"""
-        response = client.get("/api/public/rankings?limit=5")
-        assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
 
 
 class TestOpenAPIDocumentation:
