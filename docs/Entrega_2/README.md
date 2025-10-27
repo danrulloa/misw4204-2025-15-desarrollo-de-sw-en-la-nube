@@ -36,12 +36,7 @@
 
 **Estado actual:** En desarrollo. Trabajando en configuración de observabilidad para ejecutar pruebas con k6.
 
-Documentación de pruebas de carga:
-
-
-
-**Herramientas:** k6, Grafana, Prometheus
-
+Documentación de pruebas de carga: https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-2#resultado-de-las-pruebas
 
 
 
