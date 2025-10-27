@@ -270,3 +270,4 @@ docker-compose.override.yml
 .idea/
 .vscode/
 .env
+infra/.terraform.lock.hcl
