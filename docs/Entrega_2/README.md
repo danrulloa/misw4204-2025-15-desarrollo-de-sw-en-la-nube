@@ -42,11 +42,24 @@ Migración de la aplicación ANB Rising Stars Showcase de Docker Compose local a
 
 Ver documentación completa: [diagramas.md](./diagramas.md)
 
-**Resumen de diagramas:**
-- ✅ **Modelo de Datos (ERD)**: Entidades y relaciones
-- ✅ **Diagrama de Componentes**: Arquitectura de servicios
-- ✅ **Diagrama de Flujo**: Procesos de carga y procesamiento
-- ✅ **Diagrama de Despliegue**: Infraestructura AWS
+### Arquitectura del Sistema
+
+
+### Documentación de la API
+
+
+
+### Testing y Calidad
+
+
+### Análisis de Capacidad
+
+
+
+**Estado actual:** En desarrollo. Trabajando en configuración de observabilidad para ejecutar pruebas con k6.
+
+Documentación de pruebas de carga: https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-2#resultado-de-las-pruebas
+
 
 ### Infraestructura como Código
 
