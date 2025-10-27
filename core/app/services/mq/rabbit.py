@@ -1,4 +1,5 @@
 import os, json, pika
+from urllib.parse import quote
 from celery import Celery
 from app.config import settings
 
@@ -9,16 +10,58 @@ if not logger.handlers:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 def _amqp_url() -> str:
-    user = os.getenv("RABBITMQ_DEFAULT_USER", "rabbit").strip()
-    pwd  = os.getenv("RABBITMQ_DEFAULT_PASS", "rabbitpass").strip()
+    """Build the AMQP URL strictly from environment.
+
+    Rules:
+    - If RABBITMQ_URL is provided and non-empty, use it as-is.
+    - Otherwise, ALL of these must be present and non-empty: 
+      RABBITMQ_DEFAULT_USER, RABBITMQ_DEFAULT_PASS, RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_VHOST.
+      If any is missing, raise a RuntimeError (fail fast).
+    """
+    # Preferir URL completa si está definida
+    url_from_env = os.getenv("RABBITMQ_URL")
+    if url_from_env and url_from_env.strip():
+        try:
+            masked = url_from_env
+            if "@" in url_from_env and ":" in url_from_env:
+                try:
+                    masked = url_from_env.replace(url_from_env.split(':')[1].split('@')[0], "***")
+                except Exception:
+                    masked = "<masked>"
+            logger.info("AMQP URL (from env): %s", masked)
+        except Exception:
+            pass
+        return url_from_env.strip()
+
+    # Requerir todas las piezas; sin defaults
+    required_vars = {
+        "RABBITMQ_DEFAULT_USER": os.getenv("RABBITMQ_DEFAULT_USER"),
+        "RABBITMQ_DEFAULT_PASS": os.getenv("RABBITMQ_DEFAULT_PASS"),
+        "RABBITMQ_HOST": os.getenv("RABBITMQ_HOST"),
+        "RABBITMQ_PORT": os.getenv("RABBITMQ_PORT"),
+        "RABBITMQ_VHOST": os.getenv("RABBITMQ_VHOST"),
+    }
+    missing = [k for k, v in required_vars.items() if not v or not v.strip()]
+    if missing:
+        raise RuntimeError(
+            "RabbitMQ configuration missing required env vars: " + ", ".join(missing)
+        )
+
+    user = required_vars["RABBITMQ_DEFAULT_USER"].strip()
+    pwd = required_vars["RABBITMQ_DEFAULT_PASS"].strip()
+    host = required_vars["RABBITMQ_HOST"].strip()
+    port = required_vars["RABBITMQ_PORT"].strip()
+    vhost = required_vars["RABBITMQ_VHOST"].strip()
+    vhost_enc = quote(vhost, safe="")  # "/" -> "%2F"
+
     # ====== LOGGING AÑADIDO ======
     try:
-        logger.info("AMQP creds: user=%s, pass=%s, vhost=/", user, "***")
-        logger.info("AMQP URL (masked): amqp://%s:%s@rabbitmq:5672/%%2F", user, "***")
+        logger.info("AMQP creds: user=%s, pass=%s, vhost=%s", user, "***", vhost)
+        logger.info("AMQP URL (masked): amqp://%s:%s@%s:%s/%s", user, "***", host, port, vhost_enc)
     except Exception:
         pass
     # =================================
-    return f"amqp://{user}:{pwd}@rabbitmq:5672/%2F"
+    return f"amqp://{user}:{pwd}@{host}:{port}/{vhost_enc}"
 
 class RabbitPublisher:
     def __init__(self):
@@ -95,7 +138,8 @@ class RabbitPublisher:
 
         # Creación opcional de un cliente Celery ligero para publicar tareas
         # directamente en el broker con el formato que Celery espera.
-        broker_url = os.getenv('CELERY_BROKER_URL', _amqp_url())
+        # Usar CELERY_BROKER_URL si está, de lo contrario construir desde env obligatorios (fallará si faltan)
+        broker_url = os.getenv('CELERY_BROKER_URL') or _amqp_url()
 
         # ====== LOGGING AÑADIDO ======
         try:
