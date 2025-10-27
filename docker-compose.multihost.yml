@@ -74,7 +74,7 @@ services:
     env_file: [ .env ]
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@${RABBITMQ_HOST:-rabbitmq}:5672//
+        - CELERY_BROKER_URL=${RABBITMQ_URL}
       - CELERY_RESULT_BACKEND=rpc://
       - DATABASE_URL=${DB_URL_CORE} 
       - JWT_SECRET=${JWT_SECRET:-changeme}
@@ -308,7 +308,7 @@ services:
     env_file: [ .env ]
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@${RABBITMQ_HOST:-rabbitmq}:5672//
+      - CELERY_BROKER_URL=${RABBITMQ_URL}
       - CELERY_RESULT_BACKEND=rpc://
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped

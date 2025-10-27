@@ -48,15 +48,17 @@ POSTGRES_AUTH_DB=anb_auth
 
 ACCESS_TOKEN_SECRET_KEY = mi_clave_de_acceso_secreta
 REFRESH_TOKEN_SECRET_KEY = mi_clave_de_refresh_secreta
-TOKEN_EXPIRE = 15
-REFRESH_TOKEN_EXPIRE = 60
+TOKEN_EXPIRE = 600
+REFRESH_TOKEN_EXPIRE = 600
 DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
 
 # MQ
 RABBITMQ_DEFAULT_USER=rabbit
 RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672//
+RABBITMQ_PORT=5672
+RABBITMQ_VHOST=/
+RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
 RABBITMQ_HOST=${mq_ip}
 
 # WEB upstreams
