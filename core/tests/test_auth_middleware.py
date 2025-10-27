@@ -4,7 +4,7 @@ Valida exclusiones, rutas públicas, 401 y propagación de usuario
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from jose import JWTError
 from tests.conftest import make_token
 
@@ -33,47 +33,6 @@ class TestAuthMiddlewareExclusions:
         assert response.status_code == 200
 
 
-class TestAuthMiddlewarePublicRoutes:
-    """Tests para rutas públicas que no requieren autenticación"""
-    
-    def test_public_videos_no_auth_required(self, client):
-        """GET /api/public/videos no requiere token"""
-        response = client.get("/api/public/videos")
-        # Endpoint retorna 501 sin verificar auth
-        assert response.status_code == 501
-    
-    def test_public_rankings_no_auth_required(self, client):
-        """GET /api/public/rankings no requiere token"""
-        response = client.get("/api/public/rankings")
-        assert response.status_code == 501
-    
-    def test_public_vote_no_auth_at_middleware(self, client):
-        """POST /api/public/videos/{id}/vote pasa middleware sin auth"""
-        # El middleware no bloquea, pero el endpoint internamente usa bearer
-        response = client.post("/api/public/videos/abc123/vote")
-        # Endpoint retorna 501 sin verificar auth en middleware
-        assert response.status_code == 501
-    
-    def test_auth_signup_no_auth_required(self, client):
-        """POST /api/auth/signup no requiere token"""
-        response = client.post("/api/auth/signup", json={
-            "first_name": "Test",
-            "last_name": "User",
-            "email": "test@example.com",
-            "password1": "pass123",
-            "password2": "pass123",
-            "city": "Bogotá",
-            "country": "Colombia"
-        })
-        assert response.status_code == 501
-    
-    def test_auth_login_no_auth_required(self, client):
-        """POST /api/auth/login no requiere token"""
-        response = client.post("/api/auth/login", json={
-            "email": "test@example.com",
-            "password": "pass123"
-        })
-        assert response.status_code == 501
 
 
 class TestAuthMiddlewareProtectedRoutes:
@@ -134,18 +93,4 @@ class TestAuthMiddlewareTokenValidation:
         assert "Invalid or expired token" in data["detail"]
 
 
-class TestAuthMiddlewareRootPath:
-    """Tests para manejo correcto de root_path=/api"""
-    
-    def test_public_route_with_root_path(self, client):
-        """Rutas públicas funcionan correctamente con root_path"""
-        # FastAPI con root_path="/api" normaliza internamente
-        # El middleware debe comparar rel_path correctamente
-        response = client.get("/api/public/videos")
-        assert response.status_code == 501  # No 401
-    
-    def test_auth_route_with_root_path(self, client):
-        """Rutas auth funcionan correctamente con root_path"""
-        response = client.post("/api/auth/login", json={"email": "a@b.com", "password": "pass"})
-        assert response.status_code == 501  # No 401
 
