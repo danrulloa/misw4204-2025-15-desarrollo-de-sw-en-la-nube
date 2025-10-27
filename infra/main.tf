@@ -57,27 +57,27 @@ variable "az_name" {
 # Tipos por rol (compatibles con el lab)
 variable "instance_type_web" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 variable "instance_type_core" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 variable "instance_type_db" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 variable "instance_type_mq" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 variable "instance_type_worker" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 variable "instance_type_obs" {
   type    = string
-  default = "t3.micro"
+  default = "t3.large"
 }
 
 provider "aws" { region = var.region }

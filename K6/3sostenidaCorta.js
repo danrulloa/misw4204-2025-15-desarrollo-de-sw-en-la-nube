@@ -4,12 +4,12 @@ import { check } from 'k6'
 
 
 // Configurable via environment variables
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080'
+const BASE_URL = __ENV.BASE_URL || 'http://44.203.113.255:80'
 const UPLOAD_PATH = __ENV.UPLOAD_PATH || '/api/videos/upload'
 const FILE_PATH = __ENV.FILE_PATH || 'MiJugadaPostman.mp4'
 const TITLE = __ENV.TITLE || 'Tiro de tres puntos en movimiento'
 // ACCESS_TOKEN must be provided via env var (no auth calls in this script)
-const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwZWRyby5sb3BlekBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiUGVkcm8iLCJsYXN0X25hbWUiOiJMXHUwMGYzcGV6IiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYwOTc0MTUyLCJpYXQiOjE3NjA4ODc3NTIsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.84sgzkPlhBZNpjPncPz9fWivkWgj68PKT-FCA2VONtU'
+const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LnVzZXIuMTc2MTUxMDg0ODA5NkBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiVGVzdCIsImxhc3RfbmFtZSI6IlVzZXIiLCJjaXR5IjoiQm9nb3RcdTAwZTEiLCJleHAiOjE3NjE1NjM5MjMsImlhdCI6MTc2MTUyNzkyMywidG9rZW5fdHlwZSI6ImFjY2VzcyJ9.yNo6c4MMotDwDh-iux3JMGZ1BNUtJ-dCZgTAWIdZy3I'
 
 export const options = {
     stages: [
