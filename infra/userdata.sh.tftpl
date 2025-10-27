@@ -56,7 +56,9 @@ DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
 # MQ
 RABBITMQ_DEFAULT_USER=rabbit
 RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672//
+RABBITMQ_PORT=5672
+RABBITMQ_VHOST=/
+RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
 RABBITMQ_HOST=${mq_ip}
 
 # WEB upstreams
