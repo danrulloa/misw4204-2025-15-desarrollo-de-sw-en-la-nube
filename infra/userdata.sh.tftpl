@@ -12,6 +12,7 @@ mq_ip="${mq_ip}"
 obs_ip="${obs_ip}"
 web_ip="${web_ip}"
 worker_ip="${worker_ip}"
+alb_dns="${alb_dns}"
 
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release git
@@ -46,10 +47,10 @@ POSTGRES_PASSWORD=anb_pass
 POSTGRES_CORE_DB=anb_core
 POSTGRES_AUTH_DB=anb_auth
 
-ACCESS_TOKEN_SECRET_KEY = mi_clave_de_acceso_secreta
-REFRESH_TOKEN_SECRET_KEY = mi_clave_de_refresh_secreta
-TOKEN_EXPIRE = 600
-REFRESH_TOKEN_EXPIRE = 600
+ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
+REFRESH_TOKEN_SECRET_KEY=mi_clave_de_refresh_secreta
+TOKEN_EXPIRE=600
+REFRESH_TOKEN_EXPIRE=600
 DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
 
@@ -72,6 +73,10 @@ EOF
 
 # Configurar prometheus con IPs dinámicas solo en OBS
 if [ "$ROLE" = "obs" ]; then
+  # External URL para que la UI de Prometheus genere enlaces con el prefijo /prometheus
+  if [ -n "$alb_dns" ]; then
+    echo "PROMETHEUS_EXTERNAL_URL=http://$alb_dns/prometheus" >> /opt/anb-cloud/.env
+  fi
   # Usar el archivo base y sustituir placeholders con IPs reales
   # Evitar ciclos: solo sustituir WEB_IP si viene no vacío
   if [ -n "${web_ip}" ]; then
@@ -90,6 +95,8 @@ if [ "$ROLE" = "obs" ]; then
   if [ -n "$${obs_ip_runtime}" ]; then
     sed -i "s/__OBS_IP__/$${obs_ip_runtime}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   fi
+  # Si quedaron entradas con __WEB_IP__ (no hay VM WEB), elimínalas para evitar targets inválidos
+  sed -i '/__WEB_IP__/d' /opt/anb-cloud/observability/prometheus/prometheus.yml || true
 fi
 
 # Configurar nginx con IPs dinámicas solo en WEB

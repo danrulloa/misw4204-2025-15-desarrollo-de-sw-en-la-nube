@@ -1,7 +1,9 @@
 terraform {
   required_version = ">= 1.4.0"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws   = { source = "hashicorp/aws", version = "~> 5.0" }
+    local = { source = "hashicorp/local", version = "~> 2.5" }
+    null  = { source = "hashicorp/null", version = "~> 3.2" }
   }
 }
 
@@ -57,27 +59,27 @@ variable "az_name" {
 # Tipos por rol (compatibles con el lab)
 variable "instance_type_web" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_core" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_db" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_mq" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_worker" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_obs" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 
 provider "aws" { region = var.region }
@@ -136,74 +138,81 @@ locals {
 # ========== Security Groups ==========
 # Con reglas de egress explícitas para permitir conectividad a internet
 
-# WEB: 80 y 8080 públicos (8080 porque Nginx mapea 8080:80 en tu compose)
-resource "aws_security_group" "web" {
-  name        = "anb-web-sg"
-  description = "WEB ingress 80/8080"
+# ALB público (HTTP 80)
+resource "aws_security_group" "alb" {
+  name        = "anb-alb-sg"
+  description = "Public ALB"
   vpc_id      = data.aws_vpc.default.id
   tags        = local.tags_base
 }
 
-resource "aws_security_group_rule" "web_http_80" {
+resource "aws_security_group_rule" "alb_http_in" {
   type              = "ingress"
-  security_group_id = aws_security_group.web.id
+  security_group_id = aws_security_group.alb.id
   from_port         = 80
   to_port           = 80
   protocol          = "tcp"
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "web_http_8080" {
-  type              = "ingress"
-  security_group_id = aws_security_group.web.id
-  from_port         = 8080
-  to_port           = 8080
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-# Reglas de egress para WEB (acceso a internet)
-resource "aws_security_group_rule" "web_egress_all" {
+resource "aws_security_group_rule" "alb_egress_all" {
   type              = "egress"
-  security_group_id = aws_security_group.web.id
+  security_group_id = aws_security_group.alb.id
   from_port         = 0
   to_port           = 65535
   protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-resource "aws_security_group_rule" "web_egress_udp" {
-  type              = "egress"
-  security_group_id = aws_security_group.web.id
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "udp"
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
 # CORE: 8000 (API), 8001 (Auth) solo desde WEB
 resource "aws_security_group" "core" {
   name        = "anb-core-sg"
-  description = "CORE ingress from WEB"
+  description = "CORE ingress from VPC (for internal LB)"
   vpc_id      = data.aws_vpc.default.id
   tags        = local.tags_base
 }
 
-resource "aws_security_group_rule" "core_from_web_8000" {
+resource "aws_security_group_rule" "core_from_alb_8000" {
   type                     = "ingress"
   security_group_id        = aws_security_group.core.id
   from_port                = 8000
   to_port                  = 8000
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.web.id
+  source_security_group_id = aws_security_group.alb.id
 }
-resource "aws_security_group_rule" "core_from_web_8001" {
+resource "aws_security_group_rule" "core_from_alb_8001" {
   type                     = "ingress"
   security_group_id        = aws_security_group.core.id
   from_port                = 8001
   to_port                  = 8001
   protocol                 = "tcp"
-  source_security_group_id = aws_security_group.web.id
+  source_security_group_id = aws_security_group.alb.id
+}
+
+# Allow Prometheus (OBS) to scrape CORE metrics (API 8000, Auth 8001) and cadvisor (8080)
+resource "aws_security_group_rule" "core_from_obs_8000" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.core.id
+  from_port                = 8000
+  to_port                  = 8000
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+resource "aws_security_group_rule" "core_from_obs_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.core.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+resource "aws_security_group_rule" "core_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.core.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
 }
 
 # Reglas de egress para CORE (acceso a internet)
@@ -263,6 +272,32 @@ resource "aws_security_group_rule" "db_from_worker_5432" {
   to_port                  = 5432
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.worker.id
+}
+
+# Allow Prometheus (OBS) to scrape DB exporters and cadvisor
+resource "aws_security_group_rule" "db_from_obs_9187" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.db.id
+  from_port                = 9187
+  to_port                  = 9187
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+resource "aws_security_group_rule" "db_from_obs_9188" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.db.id
+  from_port                = 9188
+  to_port                  = 9188
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+resource "aws_security_group_rule" "db_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.db.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
 }
 
 # Reglas de egress para DB (acceso a internet)
@@ -335,6 +370,33 @@ resource "aws_security_group_rule" "mq_ui_admin" {
   cidr_blocks       = [var.admin_cidr]
 }
 
+resource "aws_security_group_rule" "mq_from_alb_15672" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.mq.id
+  from_port                = 15672
+  to_port                  = 15672
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
+
+# Allow Prometheus (OBS) to scrape RabbitMQ exporter and cadvisor
+resource "aws_security_group_rule" "mq_from_obs_15692" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.mq.id
+  from_port                = 15692
+  to_port                  = 15692
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+resource "aws_security_group_rule" "mq_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.mq.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
 # Reglas de egress para MQ (acceso a internet)
 resource "aws_security_group_rule" "mq_egress_all" {
   type              = "egress"
@@ -377,6 +439,23 @@ resource "aws_security_group_rule" "obs_graf" {
   protocol          = "tcp"
   cidr_blocks       = [var.admin_cidr]
 }
+
+resource "aws_security_group_rule" "obs_from_alb_3000" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.obs.id
+  from_port                = 3000
+  to_port                  = 3000
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
+resource "aws_security_group_rule" "obs_from_alb_9090" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.obs.id
+  from_port                = 9090
+  to_port                  = 9090
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
 resource "aws_security_group_rule" "obs_loki" {
   type              = "ingress"
   security_group_id = aws_security_group.obs.id
@@ -406,14 +485,7 @@ resource "aws_security_group_rule" "obs_egress_udp" {
 }
 
 # SSH: habilitar acceso 22/TCP para troubleshooting desde admin_cidr en TODOS los roles
-resource "aws_security_group_rule" "web_ssh" {
-  type              = "ingress"
-  security_group_id = aws_security_group.web.id
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = [var.admin_cidr]
-}
+
 
 resource "aws_security_group_rule" "core_ssh" {
   type              = "ingress"
@@ -451,6 +523,16 @@ resource "aws_security_group_rule" "worker_ssh" {
   cidr_blocks       = [var.admin_cidr]
 }
 
+# Allow Prometheus (OBS) to scrape cadvisor on WORKER
+resource "aws_security_group_rule" "worker_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.worker.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
 resource "aws_security_group_rule" "obs_ssh" {
   type              = "ingress"
   security_group_id = aws_security_group.obs.id
@@ -476,8 +558,9 @@ resource "aws_instance" "db" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.db.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "db", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
+    role    = "db", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip  = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = "",
+    alb_dns = ""
   })
   tags = merge(local.tags_base, { Name = "anb-db" })
   root_block_device {
@@ -494,8 +577,9 @@ resource "aws_instance" "mq" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "mq", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = ""
+    role    = "mq", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip  = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = "",
+    alb_dns = ""
   })
   tags = merge(local.tags_base, { Name = "anb-mq" })
   root_block_device {
@@ -513,9 +597,10 @@ resource "aws_instance" "core" {
   vpc_security_group_ids      = [aws_security_group.core.id]
   depends_on                  = [aws_instance.db, aws_instance.mq]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "core", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = "", db_ip = aws_instance.db.private_ip,
-    mq_ip  = aws_instance.mq.private_ip, worker_ip = "", obs_ip = ""
+    role    = "core", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip  = "", core_ip = "", db_ip = aws_instance.db.private_ip,
+    mq_ip   = aws_instance.mq.private_ip, worker_ip = "", obs_ip = "",
+    alb_dns = ""
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
@@ -533,32 +618,13 @@ resource "aws_instance" "worker" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   depends_on                  = [aws_instance.mq]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "worker", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = "", db_ip = "", mq_ip = aws_instance.mq.private_ip, worker_ip = "", obs_ip = ""
+    role    = "worker", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
+    web_ip  = "", core_ip = "", db_ip = "", mq_ip = aws_instance.mq.private_ip, worker_ip = "", obs_ip = "",
+    alb_dns = ""
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {
     volume_size = 40
-    volume_type = "gp3"
-  }
-}
-
-resource "aws_instance" "web" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_web
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.web.id]
-  depends_on                  = [aws_instance.core]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role   = "web", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
-    web_ip = "", core_ip = aws_instance.core.private_ip, db_ip = "",
-    mq_ip  = aws_instance.mq.private_ip, worker_ip = "", obs_ip = aws_instance.obs.private_ip
-  })
-  tags = merge(local.tags_base, { Name = "anb-web" })
-  root_block_device {
-    volume_size = 20
     volume_type = "gp3"
   }
 }
@@ -578,7 +644,8 @@ resource "aws_instance" "obs" {
     db_ip     = aws_instance.db.private_ip,
     mq_ip     = aws_instance.mq.private_ip,
     worker_ip = aws_instance.worker.private_ip,
-    obs_ip    = ""
+    obs_ip    = "",
+    alb_dns   = aws_lb.public.dns_name
   })
   tags = merge(local.tags_base, { Name = "anb-obs" })
   root_block_device {
@@ -587,10 +654,406 @@ resource "aws_instance" "obs" {
   }
 }
 
+# ========== Application Load Balancer ==========
+resource "aws_lb" "public" {
+  name               = "anb-public-alb"
+  load_balancer_type = "application"
+  internal           = false
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = data.aws_subnets.default.ids
+  idle_timeout       = 60
+  enable_http2       = true
+  tags               = local.tags_base
+}
+
+# Target groups (puertos según upstreams de Nginx)
+resource "aws_lb_target_group" "tg_api" {
+  name        = "anb-tg-api"
+  port        = 8000
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path                = "/health"
+    matcher             = "200-399"
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    interval            = 15
+    timeout             = 5
+  }
+  tags = local.tags_base
+}
+
+resource "aws_lb_target_group" "tg_auth" {
+  name        = "anb-tg-auth"
+  port        = 8001
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path                = "/auth/api/v1/status"
+    matcher             = "200-399"
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    interval            = 15
+    timeout             = 5
+  }
+  tags = local.tags_base
+}
+
+resource "aws_lb_target_group" "tg_rmq" {
+  name        = "anb-tg-rmq"
+  port        = 15672
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path    = "/rabbitmq/"
+    matcher = "200-399"
+  }
+  tags = local.tags_base
+}
+
+resource "aws_lb_target_group" "tg_grafana" {
+  name        = "anb-tg-grafana"
+  port        = 3000
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path    = "/api/health"
+    matcher = "200-399"
+  }
+  tags = local.tags_base
+}
+
+resource "aws_lb_target_group" "tg_prom" {
+  name        = "anb-tg-prom"
+  port        = 9090
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path    = "/-/ready"
+    matcher = "200-399"
+  }
+  tags = local.tags_base
+}
+
+## NOTE: URL rewrite transforms are applied via AWS CLI using local/NULL providers
+## to keep apps at root and strip prefixes at the ALB level.
+
+# Listener HTTP 80 (default 404)
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.public.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "not found"
+      status_code  = "404"
+    }
+  }
+}
+
+# Reglas de ruteo (equivalentes a nginx.conf)
+resource "aws_lb_listener_rule" "r_api" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 10
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_api.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_openapi_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 11
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/api/openapi.json"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/openapi.json"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_docs_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 12
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/api/docs/oauth2-redirect"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/docs/oauth2-redirect"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_auth" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 20
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_auth.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/auth/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_rmq_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 30
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/rabbitmq/"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/rabbitmq"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_rmq" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 31
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_rmq.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/rabbitmq/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_grafana_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 40
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/grafana/"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/grafana"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_grafana" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 41
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_grafana.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/grafana/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_prom_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 50
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/prometheus/"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/prometheus"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_prom" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 51
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_prom.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/prometheus/*"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_health_fixed" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 90
+  action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "ok"
+      status_code  = "200"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/nginx-health"]
+    }
+  }
+}
+
+# Registro de instancias en los target groups
+resource "aws_lb_target_group_attachment" "att_api_core" {
+  target_group_arn = aws_lb_target_group.tg_api.arn
+  target_id        = aws_instance.core.id
+}
+
+resource "aws_lb_target_group_attachment" "att_auth_core" {
+  target_group_arn = aws_lb_target_group.tg_auth.arn
+  target_id        = aws_instance.core.id
+}
+
+resource "aws_lb_target_group_attachment" "att_rmq_mq" {
+  target_group_arn = aws_lb_target_group.tg_rmq.arn
+  target_id        = aws_instance.mq.id
+}
+
+resource "aws_lb_target_group_attachment" "att_grafana_obs" {
+  target_group_arn = aws_lb_target_group.tg_grafana.arn
+  target_id        = aws_instance.obs.id
+}
+
+resource "aws_lb_target_group_attachment" "att_prom_obs" {
+  target_group_arn = aws_lb_target_group.tg_prom.arn
+  target_id        = aws_instance.obs.id
+}
+
+# ========== ALB URL Rewrites (strip /grafana and /prometheus prefixes) ==========
+# Terraform AWS provider may not expose rule transforms yet; apply via AWS CLI.
+# Requires AWS CLI available where Terraform runs.
+
+resource "local_file" "alb_transform_grafana" {
+  filename = "${path.module}/alb_transform_grafana.json"
+  # Do not rewrite Grafana paths; Grafana is configured to serve from /grafana
+  content = jsonencode([])
+}
+
+# Provide the existing actions for the Grafana rule so modify-rule has a valid update
+resource "local_file" "alb_actions_grafana" {
+  filename = "${path.module}/alb_actions_grafana.json"
+  content = jsonencode([
+    {
+      Type = "forward",
+      ForwardConfig = {
+        TargetGroups = [
+          { TargetGroupArn = aws_lb_target_group.tg_grafana.arn, Weight = 1 }
+        ]
+      }
+    }
+  ])
+}
+
+resource "local_file" "alb_transform_prom" {
+  filename = "${path.module}/alb_transform_prom.json"
+  content = jsonencode([
+    {
+      Type = "url-rewrite",
+      UrlRewriteConfig = {
+        Rewrites = [{ Regex = "^/prometheus(.*)$", Replace = "$1" }]
+      }
+    }
+  ])
+}
+
+resource "null_resource" "alb_apply_transform_grafana" {
+  depends_on = [aws_lb_listener_rule.r_grafana, local_file.alb_transform_grafana, local_file.alb_actions_grafana]
+  triggers = {
+    rule_arn = aws_lb_listener_rule.r_grafana.arn
+    # Hash the intended content instead of the file, since the file doesn't exist yet at plan time
+    transform = sha1(local_file.alb_transform_grafana.content)
+    actions   = sha1(local_file.alb_actions_grafana.content)
+  }
+
+  provisioner "local-exec" {
+    command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_grafana.arn} --actions file://${replace(path.module, "\\", "/")}/alb_actions_grafana.json --transforms file://${replace(path.module, "\\", "/")}/alb_transform_grafana.json"
+    environment = {
+      AWS_REGION         = var.region
+      AWS_DEFAULT_REGION = var.region
+    }
+  }
+}
+
+resource "null_resource" "alb_apply_transform_prom" {
+  depends_on = [aws_lb_listener_rule.r_prom, local_file.alb_transform_prom]
+  triggers = {
+    rule_arn = aws_lb_listener_rule.r_prom.arn
+    # Hash the intended content instead of the file, since the file doesn't exist yet at plan time
+    transform = sha1(local_file.alb_transform_prom.content)
+  }
+
+  provisioner "local-exec" {
+    command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_prom.arn} --transforms file://${replace(path.module, "\\", "/")}/alb_transform_prom.json"
+    environment = {
+      AWS_REGION         = var.region
+      AWS_DEFAULT_REGION = var.region
+    }
+  }
+}
+
 # ========== Outputs ==========
 output "public_ips" {
   value = {
-    web    = aws_instance.web.public_ip
     core   = aws_instance.core.public_ip
     db     = aws_instance.db.public_ip
     mq     = aws_instance.mq.public_ip
@@ -601,11 +1064,15 @@ output "public_ips" {
 
 output "private_ips" {
   value = {
-    web    = aws_instance.web.private_ip
     core   = aws_instance.core.private_ip
     db     = aws_instance.db.private_ip
     mq     = aws_instance.mq.private_ip
     worker = aws_instance.worker.private_ip
     obs    = aws_instance.obs.private_ip
   }
+}
+
+output "alb_dns_name" {
+  value       = aws_lb.public.dns_name
+  description = "DNS del ALB público"
 }
