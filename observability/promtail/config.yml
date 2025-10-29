@@ -3,7 +3,9 @@ server:
   grpc_listen_port: 0
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  # Use env var so non-OBS hosts can reach Loki over the OBS IP
+  # The value is provided via .env as LOKI_URL=http://${obs_ip}:3100/loki/api/v1/push
+  - url: ${LOKI_URL}
 
 positions:
   filename: /var/log/positions.yaml
@@ -15,6 +17,10 @@ scrape_configs:
         refresh_interval: 5s
 
     relabel_configs:
+      # Tell promtail which file to read for each container discovered via Docker SD
+      - source_labels: ['__meta_docker_container_id']
+        target_label: '__path__'
+        replacement: /var/lib/docker/containers/$1/$1-json.log
 
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
