@@ -456,6 +456,14 @@ resource "aws_security_group_rule" "obs_from_alb_9090" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.alb.id
 }
+resource "aws_security_group_rule" "obs_from_alb_3100" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.obs.id
+  from_port                = 3100
+  to_port                  = 3100
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
 resource "aws_security_group_rule" "obs_loki" {
   type              = "ingress"
   security_group_id = aws_security_group.obs.id
@@ -560,7 +568,7 @@ resource "aws_instance" "db" {
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role    = "db", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
     web_ip  = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = "",
-    alb_dns = ""
+    alb_dns = aws_lb.public.dns_name
   })
   tags = merge(local.tags_base, { Name = "anb-db" })
   root_block_device {
@@ -579,7 +587,7 @@ resource "aws_instance" "mq" {
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role    = "mq", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
     web_ip  = "", core_ip = "", db_ip = "", mq_ip = "", worker_ip = "", obs_ip = "",
-    alb_dns = ""
+    alb_dns = aws_lb.public.dns_name
   })
   tags = merge(local.tags_base, { Name = "anb-mq" })
   root_block_device {
@@ -600,7 +608,7 @@ resource "aws_instance" "core" {
     role    = "core", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
     web_ip  = "", core_ip = "", db_ip = aws_instance.db.private_ip,
     mq_ip   = aws_instance.mq.private_ip, worker_ip = "", obs_ip = "",
-    alb_dns = ""
+    alb_dns = aws_lb.public.dns_name
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
@@ -620,7 +628,7 @@ resource "aws_instance" "worker" {
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role    = "worker", repo_url = var.repo_url, repo_branch = var.repo_branch, compose_file = var.compose_file,
     web_ip  = "", core_ip = "", db_ip = "", mq_ip = aws_instance.mq.private_ip, worker_ip = "", obs_ip = "",
-    alb_dns = ""
+    alb_dns = aws_lb.public.dns_name
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {
@@ -735,6 +743,19 @@ resource "aws_lb_target_group" "tg_prom" {
   vpc_id      = data.aws_vpc.default.id
   health_check {
     path    = "/-/ready"
+    matcher = "200-399"
+  }
+  tags = local.tags_base
+}
+
+resource "aws_lb_target_group" "tg_loki" {
+  name        = "anb-tg-loki"
+  port        = 3100
+  protocol    = "HTTP"
+  target_type = "instance"
+  vpc_id      = data.aws_vpc.default.id
+  health_check {
+    path    = "/ready"
     matcher = "200-399"
   }
   tags = local.tags_base
@@ -935,6 +956,41 @@ resource "aws_lb_listener_rule" "r_prom" {
   }
 }
 
+resource "aws_lb_listener_rule" "r_loki_redirect" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 60
+  action {
+    type = "redirect"
+    redirect {
+      host        = "#{host}"
+      path        = "/loki/"
+      protocol    = "#{protocol}"
+      port        = "#{port}"
+      query       = "#{query}"
+      status_code = "HTTP_301"
+    }
+  }
+  condition {
+    path_pattern {
+      values = ["/loki"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "r_loki" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 61
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg_loki.arn
+  }
+  condition {
+    path_pattern {
+      values = ["/loki/*"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "r_health_fixed" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 90
@@ -976,6 +1032,11 @@ resource "aws_lb_target_group_attachment" "att_grafana_obs" {
 
 resource "aws_lb_target_group_attachment" "att_prom_obs" {
   target_group_arn = aws_lb_target_group.tg_prom.arn
+  target_id        = aws_instance.obs.id
+}
+
+resource "aws_lb_target_group_attachment" "att_loki_obs" {
+  target_group_arn = aws_lb_target_group.tg_loki.arn
   target_id        = aws_instance.obs.id
 }
 
@@ -1075,4 +1136,24 @@ output "private_ips" {
 output "alb_dns_name" {
   value       = aws_lb.public.dns_name
   description = "DNS del ALB público"
+}
+
+# URLs públicas de servicios detrás del ALB
+output "service_urls" {
+  description = "Public URLs via ALB"
+  value = {
+    base               = "http://${aws_lb.public.dns_name}"
+    api_health         = "http://${aws_lb.public.dns_name}/api/health"
+    api_docs           = "http://${aws_lb.public.dns_name}/api/docs"
+    api_openapi        = "http://${aws_lb.public.dns_name}/api/openapi.json"
+    auth_status        = "http://${aws_lb.public.dns_name}/auth/api/v1/status"
+    auth_docs          = "http://${aws_lb.public.dns_name}/auth/docs"
+    auth_openapi       = "http://${aws_lb.public.dns_name}/auth/openapi.json"
+    rabbitmq_ui        = "http://${aws_lb.public.dns_name}/rabbitmq/"
+    grafana            = "http://${aws_lb.public.dns_name}/grafana/"
+    prometheus         = "http://${aws_lb.public.dns_name}/prometheus/"
+    prometheus_targets = "http://${aws_lb.public.dns_name}/prometheus/targets"
+    loki_push          = "http://${aws_lb.public.dns_name}/loki/api/v1/push"
+    health             = "http://${aws_lb.public.dns_name}/nginx-health"
+  }
 }
