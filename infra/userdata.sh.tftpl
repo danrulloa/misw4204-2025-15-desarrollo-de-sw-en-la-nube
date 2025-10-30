@@ -36,10 +36,17 @@ git checkout "$repo_branch"
 git reset --hard "origin/${repo_branch}"
 
 # ----- .env por rol -----
+# Configuración estricta: requerimos ALB DNS; sin ALB no continuamos
+if [ -z "$alb_dns" ]; then
+  echo "ERROR: alb_dns no está definido. Terraform debe pasar el DNS del ALB." >&2
+  exit 1
+fi
+LOKI_URL_VALUE="http://$alb_dns/loki/api/v1/push"
+
 cat > /opt/anb-cloud/.env <<EOF
 APP_ENV=production
 API_TAG=latest
-LOKI_URL=http://${obs_ip}:3100/loki/api/v1/push
+LOKI_URL=$LOKI_URL_VALUE
 
 # CORE & AUTH DBs
 POSTGRES_USER=anb_user
