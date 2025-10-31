@@ -1,85 +1,68 @@
 # tests/test_api_videos.py
 import io
 import uuid
-import pytest
-from fastapi import status
+
+from fastapi import HTTPException, status
 
 import app.api.videos as videos_mod
+import app.services.storage.utils as storage_utils
 
 
 class TestVideoEndpoints:
-    """Tests que realmente ejecutan la lógica de app/api/videos.py."""
+    """Tests que ejercitan app/api/videos.py."""
 
     def _auth(self, make_token):
         return {"Authorization": f"Bearer {make_token(user_id='test-user-1')}"}
 
-    class _DummyStorage:
-        def save(self, fileobj, filename, content_type):
-            return f"/uploads/{filename}"
-
-    class _DummyPublisher:
+    class _StubUploadService:
         def __init__(self):
-            self.closed = False
+            self.calls = []
+            self.should_raise: HTTPException | None = None
 
-        def publish_video(self, payload): 
-            assert "video_id" in payload and "input_path" in payload and "correlation_id" in payload
-
-        def close(self):
-            self.closed = True
-
+        async def upload(self, **kwargs):
+            self.calls.append(kwargs)
+            if self.should_raise:
+                raise self.should_raise
+            fake_video = type("Video", (), {"id": uuid.uuid4()})()
+            return fake_video, "task-123"
 
     def test_upload_video_happy_path(self, client, monkeypatch, make_token):
-        """POST /api/videos/upload: sube archivo válido -> 201 y cubre storage + Rabbit."""
-        monkeypatch.setattr(videos_mod.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})
-        monkeypatch.setattr(videos_mod.settings, "MAX_UPLOAD_SIZE_MB", 50)
-        monkeypatch.setattr(videos_mod.settings, "WORKER_INPUT_PREFIX", "/worker/in")
+        """POST /api/videos/upload delega en el servicio y responde 201."""
+        stub_service = self._StubUploadService()
+        monkeypatch.setattr(videos_mod, "get_upload_service", lambda: stub_service)
 
-        monkeypatch.setattr(videos_mod, "get_storage", lambda: self._DummyStorage())
-        monkeypatch.setattr(videos_mod, "RabbitPublisher", self._DummyPublisher)
+        class _Sess:
+            pass
 
-        class _UploadSession:
-            def __init__(self):
-                self._added = None
-                self.committed = False
-                self.refreshed = False
+        client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
 
-            def add(self, obj):
-                self._added = obj
-
-            async def commit(self):
-                self.committed = True
-
-            async def refresh(self, obj):
-                if getattr(obj, "id", None) is None:
-                    obj.id = uuid.uuid4()
-                self.refreshed = True
-
-        client.app.dependency_overrides[videos_mod.get_session] = lambda: _UploadSession()
-
-        file_bytes = b"\x00\x01video"
-        files = {"video_file": ("jugada.mp4", io.BytesIO(file_bytes), "video/mp4")}
+        files = {"video_file": ("jugada.mp4", io.BytesIO(b"data"), "video/mp4")}
         data = {"title": "Mi video"}
 
         resp = client.post("/api/videos/upload", headers=self._auth(make_token), files=files, data=data)
         assert resp.status_code == status.HTTP_201_CREATED
         body = resp.json()
         assert body["message"].startswith("Video subido correctamente")
-        assert "video_id" in body and "task_id" in body
-        assert "Location" in resp.headers and resp.headers["Location"].startswith("/api/videos/")
+        assert body["video_id"]
+        assert body["task_id"] == "task-123"
+        assert resp.headers["Location"].startswith("/api/videos/")
+
+        assert len(stub_service.calls) == 1
+        call = stub_service.calls[0]
+        assert call["user_id"] == "test-user-1"
+        assert call["title"] == "Mi video"
+        assert "user_id" in call["user_info"]
 
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_upload_video_rechaza_formato(self, client, monkeypatch, make_token):
-        """Formato no permitido -> 400 (ejecuta _validate_ext_and_size)."""
-        monkeypatch.setattr(videos_mod.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"}) 
-        monkeypatch.setattr(videos_mod.settings, "MAX_UPLOAD_SIZE_MB", 50)
-        monkeypatch.setattr(videos_mod, "get_storage", lambda: self._DummyStorage())
-        monkeypatch.setattr(videos_mod, "RabbitPublisher", self._DummyPublisher)
+        """Si el servicio lanza HTTPException debe propagarse."""
+        stub_service = self._StubUploadService()
+        stub_service.should_raise = HTTPException(status_code=400, detail="Formato no permitido")
+        monkeypatch.setattr(videos_mod, "get_upload_service", lambda: stub_service)
 
         class _Sess:
-            def add(self, o): ...
-            async def commit(self): ...
-            async def refresh(self, o): ...
+            pass
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
 
@@ -87,6 +70,7 @@ class TestVideoEndpoints:
         data = {"title": "tit"}
         resp = client.post("/api/videos/upload", headers=self._auth(make_token), files=files, data=data)
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.json()["detail"] == "Formato no permitido"
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_list_videos_ok(self, client, monkeypatch, make_token):
@@ -106,11 +90,14 @@ class TestVideoEndpoints:
         class _Res:
             def scalars(self):
                 class _S:
-                    def all(_): return [v]
+                    def all(_):
+                        return [v]
+
                 return _S()
 
         class _Sess:
-            async def execute(self, stmt): return _Res()
+            async def execute(self, stmt):
+                return _Res()
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
 
@@ -125,33 +112,31 @@ class TestVideoEndpoints:
 
     def test_get_video_detail_404(self, client, make_token):
         """GET detail: no existe -> 404."""
+
         class _Sess:
             async def execute(self, stmt):
                 class _R:
-                    def scalar_one_or_none(_): return None
+                    def scalar_one_or_none(_):
+                        return None
+
                 return _R()
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
-        resp = client.get(
-            "/api/videos/00000000-0000-0000-0000-000000000000",
-            headers=self._auth(make_token),
-        )
+        resp = client.get("/api/videos/00000000-0000-0000-0000-000000000000", headers=self._auth(make_token))
         assert resp.status_code == status.HTTP_404_NOT_FOUND
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
-    def test_get_video_detail_403(self, client, make_token):
-        """GET detail: pertenece a otro usuario -> 403."""
-        other_user_id = "someone-else"
-
+    def test_get_video_detail_forbidden(self, client, make_token):
+        """GET detail: el video no pertenece al usuario -> 403."""
         vid = type(
             "V",
             (),
             {
                 "id": uuid.uuid4(),
-                "user_id": other_user_id,
-                "title": "Ajeno",
+                "user_id": "other-user",
+                "title": "No mío",
                 "status": "uploaded",
-                "created_at": "2025-03-10T14:30:00Z",
+                "created_at": "2025-01-01T00:00:00Z",
                 "processed_at": None,
             },
         )()
@@ -159,7 +144,9 @@ class TestVideoEndpoints:
         class _Sess:
             async def execute(self, stmt):
                 class _R:
-                    def scalar_one_or_none(_): return vid
+                    def scalar_one_or_none(_):
+                        return vid
+
                 return _R()
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
@@ -186,7 +173,9 @@ class TestVideoEndpoints:
         class _Sess:
             async def execute(self, stmt):
                 class _R:
-                    def scalar_one_or_none(_): return vid
+                    def scalar_one_or_none(_):
+                        return vid
+
                 return _R()
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
@@ -195,7 +184,7 @@ class TestVideoEndpoints:
         data = resp.json()
         assert data["video_id"] == str(vid.id)
         assert data["title"] == "MVP"
-        assert data["votes"] == 0 
+        assert data["votes"] == 0
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_delete_video_ya_procesado(self, client, make_token):
@@ -215,7 +204,9 @@ class TestVideoEndpoints:
         class _Sess:
             async def execute(self, stmt):
                 class _R:
-                    def scalar_one_or_none(_): return vid
+                    def scalar_one_or_none(_):
+                        return vid
+
                 return _R()
 
         client.app.dependency_overrides[videos_mod.get_session] = lambda: _Sess()
@@ -224,13 +215,13 @@ class TestVideoEndpoints:
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
 
     def test_delete_video_ok(self, client, monkeypatch, make_token, tmp_path):
-        """DELETE: propio y no procesado -> 200; cubre borrado físico y commit."""
+        """DELETE: propio y no procesado -> 200; borra archivos."""
         upload_dir = tmp_path / "uploads"
         processed_dir = tmp_path / "processed"
         upload_dir.mkdir()
         processed_dir.mkdir()
-        monkeypatch.setattr(videos_mod.settings, "UPLOAD_DIR", str(upload_dir))
-        monkeypatch.setattr(videos_mod.settings, "PROCESSED_DIR", str(processed_dir))
+        monkeypatch.setattr(storage_utils.settings, "UPLOAD_DIR", str(upload_dir))
+        monkeypatch.setattr(storage_utils.settings, "PROCESSED_DIR", str(processed_dir))
 
         orig = upload_dir / "v1.mp4"
         proc = processed_dir / "v1.m3u8"
@@ -256,7 +247,9 @@ class TestVideoEndpoints:
 
             async def execute(self, stmt):
                 class _R:
-                    def scalar_one_or_none(_): return vid
+                    def scalar_one_or_none(_):
+                        return vid
+
                 return _R()
 
             async def delete(self, obj):

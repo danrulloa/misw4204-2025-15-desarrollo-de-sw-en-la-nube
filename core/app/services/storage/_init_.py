@@ -5,7 +5,8 @@ from app.services.storage.s3 import S3StorageAdapter
 from app.config import settings
 
 def get_storage() -> StoragePort:
-    if settings.STORAGE_BACKEND == "s3":
+    backend = (settings.STORAGE_BACKEND or "local").strip().lower()
+    if backend == "s3":
         return S3StorageAdapter(
             bucket=settings.S3_BUCKET,
             prefix=settings.S3_PREFIX,

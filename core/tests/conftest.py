@@ -3,14 +3,45 @@
 Configuración de fixtures para pytest
 """
 import os
+import sys
 import time
+import types
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
-from main import app
 from jose import jwt
 
-import sys
+
+if "prometheus_fastapi_instrumentator" not in sys.modules:
+    class _StubInstrumentator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def instrument(self, app):
+            return self
+
+        def expose(self, app, endpoint="/metrics", include_in_schema=False):
+            return None
+
+    sys.modules["prometheus_fastapi_instrumentator"] = types.SimpleNamespace(
+        Instrumentator=_StubInstrumentator
+    )
+
+if "prometheus_client" not in sys.modules:
+    class _StubHistogram:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, **kwargs):
+            return self
+
+        def observe(self, value):
+            return None
+
+    sys.modules["prometheus_client"] = types.SimpleNamespace(Histogram=_StubHistogram)
+
+from main import app
+
 sys.path.append(str(Path(__file__).parent.parent))
 
 # ------------------ cliente ------------------
