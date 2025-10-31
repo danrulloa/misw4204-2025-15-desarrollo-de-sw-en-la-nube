@@ -27,7 +27,15 @@ class Settings(BaseSettings):
     
     VIDEO_EXCHANGE: str = os.getenv("VIDEO_EXCHANGE", "video")
     WORKER_INPUT_PREFIX: str = "/mnt/uploads"
-    STORAGE_BACKEND: str = "local"
+    STORAGE_BACKEND: str = "s3"  # "local" | "s3"
+
+    # S3
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "anb-basketball-bucket")
+    S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    S3_PREFIX: str = os.getenv("S3_PREFIX", "uploads")
+    S3_ENDPOINT_URL: str | None = os.getenv("S3_ENDPOINT_URL")
+    S3_FORCE_PATH_STYLE: bool = bool(int(os.getenv("S3_FORCE_PATH_STYLE", "0")))
+    S3_VERIFY_SSL: bool = bool(int(os.getenv("S3_VERIFY_SSL", "1")))
 
     class Config:
         env_file = ".env"
