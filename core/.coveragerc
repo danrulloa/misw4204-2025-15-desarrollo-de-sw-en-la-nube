@@ -1,0 +1,3 @@
+[run]
+omit =
+    app/services/mq/rabbit.py
