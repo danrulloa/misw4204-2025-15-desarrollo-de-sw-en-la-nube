@@ -53,7 +53,17 @@ class LocalUploadService:
         db.add(video)
         await db.flush()  # Flush para obtener ID sin commit
 
-        input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
+        # Generar input_path según el backend de almacenamiento
+        if settings.STORAGE_BACKEND == "s3":
+            # Para S3: generar ruta completa s3://bucket/key
+            # saved_rel_path es como "/uploads/2025/11/02/uuid.mp4"
+            # Necesitamos s3://bucket/uploads/2025/11/02/uuid.mp4
+            s3_key = saved_rel_path.lstrip("/")  # "uploads/2025/11/02/uuid.mp4"
+            input_path = f"s3://{settings.S3_BUCKET}/{s3_key}"
+        else:
+            # Local: mantener comportamiento actual
+            input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
+        
         correlation_id = f"req-{uuid.uuid4().hex[:12]}"
 
         # Actualizar correlation_id y status antes de encolar

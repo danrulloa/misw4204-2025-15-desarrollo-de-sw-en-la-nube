@@ -5,7 +5,9 @@ import { Trend } from 'k6/metrics'
 
 
 // Configurable via environment variables
-const BASE_URL = __ENV.BASE_URL || 'http://anb-public-alb-343736265.us-east-1.elb.amazonaws.com:80'
+// Para AWS: usar ALB DNS name obtenido de terraform output alb_dns_name
+// Ejemplo: k6 run K6/2escalamiento.js -e BASE_URL=http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080'
 const UPLOAD_PATH = __ENV.UPLOAD_PATH || '/api/videos/upload'
 const FILE_PATH = __ENV.FILE_PATH || 'MiJugadaPostman.mp4'
 const TITLE = __ENV.TITLE || 'Tiro de tres puntos en movimiento'

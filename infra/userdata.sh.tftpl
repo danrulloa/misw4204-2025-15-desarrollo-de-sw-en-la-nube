@@ -14,6 +14,14 @@ web_ip="${web_ip}"
 worker_ip="${worker_ip}"
 alb_dns="${alb_dns}"
 
+# RDS endpoints (vacíos si no se usan RDS)
+rds_core_endpoint="${rds_core_endpoint}"
+rds_auth_endpoint="${rds_auth_endpoint}"
+rds_password="${rds_password}"
+
+# S3 bucket (vacío si no se usa S3)
+s3_bucket="${s3_bucket}"
+
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release git
 install -m 0755 -d /etc/apt/keyrings || true
@@ -58,8 +66,14 @@ ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
 REFRESH_TOKEN_SECRET_KEY=mi_clave_de_refresh_secreta
 TOKEN_EXPIRE=600
 REFRESH_TOKEN_EXPIRE=600
+# RDS o PostgreSQL local según disponibilidad
+%{ if rds_core_endpoint != "" ~}
+DB_URL_CORE=postgresql+asyncpg://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
+DB_URL_AUTH=postgresql+asyncpg://anb_user:${rds_password}@${rds_auth_endpoint}:5432/anb_auth
+%{ else ~}
 DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
+%{ endif ~}
 
 # MQ
 RABBITMQ_DEFAULT_USER=rabbit
@@ -76,6 +90,18 @@ UPSTREAM_AUTH=http://${core_ip}:8001
 # JWT & Security
 JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
 ALGORITHM=HS256
+
+# S3 Configuration (si bucket está definido)
+%{ if s3_bucket != "" ~}
+STORAGE_BACKEND=s3
+S3_BUCKET=${s3_bucket}
+S3_REGION=us-east-1
+S3_PREFIX=uploads
+S3_FORCE_PATH_STYLE=0
+S3_VERIFY_SSL=1
+%{ else ~}
+STORAGE_BACKEND=local
+%{ endif ~}
 EOF
 
 # Configurar prometheus con IPs dinámicas solo en OBS
