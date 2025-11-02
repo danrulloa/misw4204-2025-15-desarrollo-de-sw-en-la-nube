@@ -343,32 +343,26 @@ resource "aws_security_group" "rds" {
 }
 
 # Reglas de ingress para RDS (desde CORE y WORKER)
-# NOTA: Estas reglas ya existen en AWS de un intento anterior.
-# Descomentar y usar 'terraform import' si necesitas gestionarlas con Terraform:
-#
-# terraform import aws_security_group_rule.rds_ingress_from_core sgrule-<ID>
-# terraform import aws_security_group_rule.rds_ingress_from_worker sgrule-<ID>
-#
-# Por ahora están comentadas para evitar errores de duplicado.
-# resource "aws_security_group_rule" "rds_ingress_from_core" {
-#   type                     = "ingress"
-#   security_group_id        = aws_security_group.rds.id
-#   from_port                = 5432
-#   to_port                  = 5432
-#   protocol                 = "tcp"
-#   source_security_group_id = aws_security_group.core.id
-#   description              = "Core API to RDS"
-# }
-#
-# resource "aws_security_group_rule" "rds_ingress_from_worker" {
-#   type                     = "ingress"
-#   security_group_id        = aws_security_group.rds.id
-#   from_port                = 5432
-#   to_port                  = 5432
-#   protocol                 = "tcp"
-#   source_security_group_id = aws_security_group.worker.id
-#   description              = "Worker to RDS"
-# }
+# Necesarias para que las apps (API/Auth/Worker) en EC2 puedan conectarse a RDS.
+resource "aws_security_group_rule" "rds_ingress_from_core" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.rds.id
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.core.id
+  description              = "Core/API to RDS"
+}
+
+resource "aws_security_group_rule" "rds_ingress_from_worker" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.rds.id
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.worker.id
+  description              = "Worker to RDS"
+}
 
 # Reglas de egress para RDS (acceso a internet)
 resource "aws_security_group_rule" "rds_egress_all" {
@@ -404,7 +398,7 @@ resource "aws_security_group_rule" "worker_egress_all" {
 resource "aws_db_subnet_group" "anb_rds" {
   name       = "anb-rds-subnet-group"
   subnet_ids = data.aws_subnets.default.ids
-  
+
   tags = merge(local.tags_base, {
     Name = "anb-rds-subnet-group"
   })
@@ -647,15 +641,15 @@ resource "aws_instance" "db" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.db.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "db", 
-    repo_url          = var.repo_url, 
-    repo_branch       = var.repo_branch, 
+    role              = "db",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
     compose_file      = var.compose_file,
-    web_ip            = "", 
-    core_ip           = "", 
-    db_ip             = "", 
-    mq_ip             = "", 
-    worker_ip         = "", 
+    web_ip            = "",
+    core_ip           = "",
+    db_ip             = "",
+    mq_ip             = "",
+    worker_ip         = "",
     obs_ip            = "",
     alb_dns           = aws_lb.public.dns_name,
     rds_core_endpoint = "",
@@ -678,15 +672,15 @@ resource "aws_instance" "mq" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "mq", 
-    repo_url          = var.repo_url, 
-    repo_branch       = var.repo_branch, 
+    role              = "mq",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
     compose_file      = var.compose_file,
-    web_ip            = "", 
-    core_ip           = "", 
-    db_ip             = "", 
-    mq_ip             = "", 
-    worker_ip         = "", 
+    web_ip            = "",
+    core_ip           = "",
+    db_ip             = "",
+    mq_ip             = "",
+    worker_ip         = "",
     obs_ip            = "",
     alb_dns           = aws_lb.public.dns_name,
     rds_core_endpoint = "",
@@ -710,15 +704,15 @@ resource "aws_instance" "core" {
   vpc_security_group_ids      = [aws_security_group.core.id]
   depends_on                  = [aws_instance.db, aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "core", 
-    repo_url          = var.repo_url, 
-    repo_branch       = var.repo_branch, 
+    role              = "core",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
     compose_file      = var.compose_file,
-    web_ip            = "", 
-    core_ip           = "", 
-    db_ip             = "",  # Ya no se usa (RDS en su lugar)
-    mq_ip             = aws_instance.mq.private_ip, 
-    worker_ip         = "", 
+    web_ip            = "",
+    core_ip           = "",
+    db_ip             = "", # Ya no se usa (RDS en su lugar)
+    mq_ip             = aws_instance.mq.private_ip,
+    worker_ip         = "",
     obs_ip            = "",
     alb_dns           = aws_lb.public.dns_name,
     rds_core_endpoint = aws_db_instance.core.address,
@@ -742,21 +736,21 @@ resource "aws_instance" "worker" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "worker", 
-    repo_url          = var.repo_url, 
-    repo_branch       = var.repo_branch, 
+    role              = "worker",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
     compose_file      = var.compose_file,
-    web_ip            = "", 
-    core_ip           = "", 
-    db_ip             = "", 
-    mq_ip             = aws_instance.mq.private_ip, 
-    worker_ip         = "", 
+    web_ip            = "",
+    core_ip           = "",
+    db_ip             = "",
+    mq_ip             = aws_instance.mq.private_ip,
+    worker_ip         = "",
     obs_ip            = "",
     alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = "",  # Worker no necesita RDS directamente
+    rds_core_endpoint = "", # Worker no necesita RDS directamente
     rds_auth_endpoint = "",
     rds_password      = "",
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket  # Worker necesita S3 para leer videos
+    s3_bucket         = aws_s3_bucket.anb_videos.bucket # Worker necesita S3 para leer videos
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {
@@ -774,9 +768,9 @@ resource "aws_instance" "obs" {
   vpc_security_group_ids      = [aws_security_group.obs.id]
   # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "obs", 
-    repo_url          = var.repo_url, 
-    repo_branch       = var.repo_branch, 
+    role              = "obs",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
     compose_file      = var.compose_file,
     web_ip            = "",
     core_ip           = aws_instance.core.private_ip,
@@ -799,14 +793,14 @@ resource "aws_instance" "obs" {
 
 # ========== RDS PostgreSQL ==========
 resource "aws_db_instance" "core" {
-  identifier           = "anb-core-rds"
-  engine               = "postgres"
+  identifier = "anb-core-rds"
+  engine     = "postgres"
   # engine_version omitido - AWS usará la versión predeterminada disponible para postgres
-  instance_class       = var.rds_instance_class
-  allocated_storage    = 20
+  instance_class        = var.rds_instance_class
+  allocated_storage     = 20
   max_allocated_storage = 100
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = "anb_core"
   username = "anb_user"
@@ -826,14 +820,14 @@ resource "aws_db_instance" "core" {
 }
 
 resource "aws_db_instance" "auth" {
-  identifier           = "anb-auth-rds"
-  engine               = "postgres"
+  identifier = "anb-auth-rds"
+  engine     = "postgres"
   # engine_version omitido - AWS usará la versión predeterminada disponible para postgres
-  instance_class       = var.rds_instance_class
-  allocated_storage    = 20
+  instance_class        = var.rds_instance_class
+  allocated_storage     = 20
   max_allocated_storage = 100
-  storage_type         = "gp3"
-  storage_encrypted    = true
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = "anb_auth"
   username = "anb_user"

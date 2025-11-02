@@ -336,10 +336,10 @@ terraform validate
 
 ```bash
 # Ver qué se va a crear (plan)
-terraform plan -var-file=terraform.tfvars
+terraform plan -var-file=".\terraform.tfvars"
 
 # Crear recursos (apply)
-terraform apply -var-file=terraform.tfvars
+terraform apply -var-file=".\terraform.tfvars"
 ```
 
 **Tiempo estimado**: ~15-20 minutos
@@ -760,6 +760,8 @@ scrape_configs:
 ```bash
 cd infra
 terraform destroy -var-file=terraform.tfvars
+
+terraform destroy -var-file=".\terraform.tfvars"
 ```
 
 Cuando Terraform solicite confirmación, revisa qué se va a destruir y escribe `yes`.
