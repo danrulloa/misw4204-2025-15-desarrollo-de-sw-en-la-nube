@@ -1,8 +1,11 @@
+import os
+import uuid
+import shutil
 
-import os, uuid, shutil
 from pathlib import Path
 from datetime import datetime
 from typing import BinaryIO
+
 from app.services.storage.base import StoragePort
 from app.config import settings
 
@@ -15,6 +18,7 @@ class LocalStorageAdapter(StoragePort):
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def save(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
+        """Guarda el archivo usando streaming síncrono."""
         today = datetime.utcnow()
         day_dir = self.base_dir / f"{today:%Y}" / f"{today:%m}" / f"{today:%d}"
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -23,8 +27,8 @@ class LocalStorageAdapter(StoragePort):
         dest_path = (day_dir / safe_name).resolve()
 
         fileobj.seek(0)
-        with open(dest_path, "wb") as out:
-            shutil.copyfileobj(fileobj, out)
+        with open(dest_path, 'wb') as f:
+            shutil.copyfileobj(fileobj, f)
 
         # Devolver ruta **relativa** (desde /storage), ej: /uploads/2025/10/13/uuid.mp4
         rel_from_storage = dest_path.relative_to(self.abs_root).as_posix()

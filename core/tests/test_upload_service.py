@@ -16,12 +16,23 @@ class _StubSession:
         self.added = None
         self.commits = 0
         self.refresh_calls = 0
+        self.flush_calls = 0
+        self.rollback_calls = 0
 
     def add(self, obj):
         self.added = obj
 
     async def commit(self):
         self.commits += 1
+
+    async def flush(self):
+        self.flush_calls += 1
+        # Simular asignación de ID en flush (similar a refresh)
+        if getattr(self.added, "id", None) is None:
+            self.added.id = uuid.uuid4()
+
+    async def rollback(self):
+        self.rollback_calls += 1
 
     async def refresh(self, obj):
         self.refresh_calls += 1
@@ -99,8 +110,9 @@ async def test_upload_service_happy_path(service, monkeypatch):
     assert saved_type == "video/mp4"
 
     assert db.added is video
-    assert db.commits == 2
-    assert db.refresh_calls == 2
+    assert db.commits == 1  # Un solo commit al final
+    assert db.flush_calls == 1  # Flush para obtener ID
+    assert db.refresh_calls == 0  # Ya no necesitamos refresh
     assert video.status is VideoStatus.processing
     assert video.correlation_id == correlation
     assert video.player_first_name == "Ana"
@@ -158,7 +170,8 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
     video = db.added
     assert video.status is VideoStatus.uploaded
     assert video.correlation_id is None
-    assert db.commits == 3  # dos commits normales + rollback
+    assert db.commits == 0  # No hubo commits (falló antes)
+    assert db.rollback_calls == 1  # Se hizo rollback
 
 
 @pytest.mark.asyncio

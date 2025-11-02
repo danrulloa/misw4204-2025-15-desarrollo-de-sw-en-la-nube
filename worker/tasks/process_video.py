@@ -6,6 +6,8 @@ import shutil
 import logging
 from pathlib import Path
 import psycopg
+import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +37,65 @@ def _parse_task_args(args, kwargs):
     return args[0], args[1], args[2]
 
 
+def _is_s3_path(path: str) -> bool:
+    """Detecta si la ruta es S3 (s3://bucket/key) o local."""
+    return str(path).startswith('s3://')
+
+
+def _parse_s3_path(s3_path: str) -> tuple[str, str]:
+    """Parsea s3://bucket/key -> (bucket, key)"""
+    if not _is_s3_path(s3_path):
+        raise ValueError(f"Not an S3 path: {s3_path}")
+    # s3://bucket/key -> bucket, key
+    parts = s3_path.replace('s3://', '').split('/', 1)
+    return parts[0], parts[1] if len(parts) > 1 else ''
+
+
+def _download_from_s3(s3_path: str, local_path: Path) -> Path:
+    """Descarga archivo desde S3 a path local. Retorna Path local."""
+    bucket, key = _parse_s3_path(s3_path)
+    s3_region = os.getenv('S3_REGION', 'us-east-1')
+    s3_client = boto3.client('s3', region_name=s3_region)
+    
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        s3_client.download_file(bucket, key, str(local_path))
+        logger.info('Descargado desde S3: %s -> %s', s3_path, local_path)
+        return local_path
+    except ClientError as e:
+        logger.error('Error descargando desde S3: %s', e)
+        raise FileNotFoundError(f'No se pudo descargar desde S3: {s3_path}') from e
+
+
+def _upload_to_s3(local_path: Path, s3_path: str) -> str:
+    """Sube archivo local a S3. Retorna ruta S3."""
+    bucket, key = _parse_s3_path(s3_path)
+    s3_region = os.getenv('S3_REGION', 'us-east-1')
+    s3_client = boto3.client('s3', region_name=s3_region)
+    
+    try:
+        s3_client.upload_file(str(local_path), bucket, key)
+        logger.info('Subido a S3: %s -> %s', local_path, s3_path)
+        return s3_path
+    except ClientError as e:
+        logger.error('Error subiendo a S3: %s', e)
+        raise RuntimeError(f'No se pudo subir a S3: {s3_path}') from e
+
+
 def _resolve_worker_path(original_input):
-    """Return Path for the worker-local source based on UPLOAD_DIR mapping."""
+    """Return Path para worker-local source, descargando desde S3 si es necesario."""
+    if _is_s3_path(original_input):
+        # Es S3: descargar a temp local
+        # Usar un nombre de archivo temporal basado en el key S3
+        tmp_base = Path(tempfile.gettempdir())
+        # Extraer nombre del archivo del key S3
+        _, key = _parse_s3_path(original_input)
+        filename = key.split('/')[-1] if '/' in key else key
+        tmp_file = tmp_base / f"s3_download_{filename}"
+        return _download_from_s3(original_input, tmp_file)
+    
+    # Comportamiento original para paths locales
     video_src = Path(original_input)
     upload_dir = os.getenv('UPLOAD_DIR', '/app/storage/uploads')
     if str(video_src).startswith(MNT_UPLOADS_PREFIX):
@@ -206,8 +265,23 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
 
 
 def _compute_output_path(original_input, processed_dir, video_src):
-    """Compute output Path mirroring /mnt/uploads to PROCESSED_DIR when applicable."""
+    """Compute output Path, retornando ruta S3 si input era S3."""
     input_str = str(original_input)
+    
+    # Si input era S3, output también debe ser S3
+    if _is_s3_path(input_str):
+        # original_input: s3://bucket/uploads/2025/11/02/uuid.mp4
+        # output: s3://bucket/processed/2025/11/02/uuid.mp4
+        bucket, key = _parse_s3_path(input_str)
+        # Cambiar prefix de uploads a processed
+        if key.startswith('uploads/'):
+            processed_key = key.replace('uploads/', 'processed/', 1)
+        else:
+            # Fallback: agregar processed/
+            processed_key = f'processed/{key}'
+        return f"s3://{bucket}/{processed_key}"
+    
+    # Comportamiento original para local
     if input_str.startswith(MNT_UPLOADS_PREFIX):
         rel = input_str[len(MNT_UPLOADS_PREFIX):]
         rel = rel.lstrip('/')
@@ -350,17 +424,36 @@ def run(self, *args, **kwargs):
         # on PermissionError here.
         _ensure_parent_dir(output_path)
 
-        # Use a POSIX-style string for the returned path so tests are consistent across OS
-        output_str = output_path.as_posix()
+        # Determinar si el output es S3 o local
+        is_s3_output = _is_s3_path(str(output_path))
+        
+        if is_s3_output:
+            # Output es S3: convertir a string y subir
+            output_str = str(output_path)
+            try:
+                _upload_to_s3(out_file, output_str)
+                logger.info('Subido archivo procesado a S3: %s', output_str)
+                # Limpiar archivo local después de subir
+                try:
+                    out_file.unlink()
+                except Exception as e:
+                    logger.warning('No se pudo eliminar archivo temporal %s: %s', out_file, e)
+            except Exception as e:
+                logger.error('Failed to upload output to S3: %s', e)
+                raise task_self.retry(exc=e, countdown=10, max_retries=2)
+        else:
+            # Output es local: comportamiento original
+            # Use a POSIX-style string for the returned path so tests are consistent across OS
+            output_str = output_path.as_posix()
 
-        # Move final file into the processed storage location
-        try:
-            # Pass the same string we will return (POSIX) to the move operation; shutil on Windows accepts '/' separator too
-            shutil.move(str(out_file), output_str)
-            logger.info('Moved processed file to %s', output_str)
-        except Exception as e:
-            logger.error('Failed to move output to final location: %s', e)
-            raise task_self.retry(exc=e, countdown=10, max_retries=2)
+            # Move final file into the processed storage location
+            try:
+                # Pass the same string we will return (POSIX) to the move operation; shutil on Windows accepts '/' separator too
+                shutil.move(str(out_file), output_str)
+                logger.info('Moved processed file to %s', output_str)
+            except Exception as e:
+                logger.error('Failed to move output to final location: %s', e)
+                raise task_self.retry(exc=e, countdown=10, max_retries=2)
 
         # Update database record for the video if video_id is available (direct DB update)
         db_url = os.getenv('DATABASE_URL') or os.getenv('DB_URL')
@@ -373,8 +466,24 @@ def run(self, *args, **kwargs):
         logger.exception('Processing failed')
         raise task_self.retry(exc=exc, countdown=30, max_retries=2)
     finally:
-        # cleanup: keep output for caller; remove temp files except output? We'll keep tmpdir for debugging if needed.
-        # For now, remove temp dir to avoid disk leak
+        # cleanup: remove temp files
+        # Si descargamos desde S3, también limpiar ese archivo
+        try:
+            if _is_s3_path(original_input):
+                # Buscar y limpiar archivo descargado de S3 si existe
+                _, key = _parse_s3_path(original_input)
+                filename = key.split('/')[-1] if '/' in key else key
+                s3_download_path = Path(tempfile.gettempdir()) / f"s3_download_{filename}"
+                if s3_download_path.exists():
+                    try:
+                        s3_download_path.unlink()
+                        logger.debug('Eliminado archivo temporal descargado de S3: %s', s3_download_path)
+                    except Exception as e:
+                        logger.warning('No se pudo eliminar archivo descargado de S3 %s: %s', s3_download_path, e)
+        except Exception:
+            pass
+        
+        # Limpiar tmpdir
         try:
             shutil.rmtree(tmpdir)
         except Exception:

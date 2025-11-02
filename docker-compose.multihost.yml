@@ -124,9 +124,9 @@ services:
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB_CORE:-anb_core} -h 127.0.0.1 -p 5432" ]
       interval: 10s
-      timeout: 5s
+      timeout: 30s
       retries: 10
-      start_period: 25s
+      start_period: 90s
     restart: unless-stopped
     networks: [ internal ]
 
