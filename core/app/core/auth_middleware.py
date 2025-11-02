@@ -13,6 +13,7 @@ ALGORITHM = os.getenv("ALGORITHM")
 EXCLUDED_PATHS = {
     "/",
     "/health",
+    "/api/health",
     "/docs",
     "/redoc",
     "/openapi.json",
