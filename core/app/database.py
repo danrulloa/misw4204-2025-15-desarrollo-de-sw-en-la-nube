@@ -11,7 +11,10 @@ from app.config import settings
 # Usar la configuración centralizada en settings
 engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,
+    pool_size=20,           # Aumentar de default (5) a 20 para concurrencia
+    max_overflow=10,        # Permitir burst de conexiones
+    pool_timeout=30,        # Timeout razonable
+    pool_pre_ping=True,     # Health checks de conexiones
     future=True,
 )
 

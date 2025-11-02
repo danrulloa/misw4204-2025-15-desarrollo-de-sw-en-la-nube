@@ -51,17 +51,14 @@ class LocalUploadService:
             player_city=user_info.get("city", ""),
         )
         db.add(video)
-        await db.commit()
-        await db.refresh(video)
+        await db.flush()  # Flush para obtener ID sin commit
 
         input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
         correlation_id = f"req-{uuid.uuid4().hex[:12]}"
 
-        # Persistir correlation_id y marcar en procesamiento antes de encolar
+        # Actualizar correlation_id y status antes de encolar
         video.correlation_id = correlation_id
         video.status = VideoStatus.processing
-        await db.commit()
-        await db.refresh(video)
 
         try:
             payload = {
@@ -70,16 +67,20 @@ class LocalUploadService:
                 "correlation_id": correlation_id,
             }
 
+            # Usar RabbitMQ con pool reutilizable
             pub = RabbitPublisher()
             try:
                 pub.publish_video(payload)
             finally:
                 pub.close()
+            
+            # Solo hacer commit si todo salió bien
+            await db.commit()
         except Exception as e:
             # Si falla el encolado, revertir a uploaded para permitir reintento
             video.status = VideoStatus.uploaded
             video.correlation_id = None
-            await db.commit()
+            await db.rollback()
             raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
         return video, correlation_id

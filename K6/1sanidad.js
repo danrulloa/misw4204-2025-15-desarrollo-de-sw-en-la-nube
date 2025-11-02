@@ -10,7 +10,7 @@ const UPLOAD_PATH = __ENV.UPLOAD_PATH || '/api/videos/upload'
 const FILE_PATH = __ENV.FILE_PATH || 'MiJugadaPostman.mp4'
 const TITLE = __ENV.TITLE || 'Tiro de tres puntos en movimiento'
 // ACCESS_TOKEN must be provided via env var (no auth calls in this script)
-const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LnVzZXIuMTc2MTUxMDg0ODA5NkBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiVGVzdCIsImxhc3RfbmFtZSI6IlVzZXIiLCJjaXR5IjoiQm9nb3RcdTAwZTEiLCJleHAiOjE3NjE3Nzc1ODAsImlhdCI6MTc2MTc0MTU4MCwidG9rZW5fdHlwZSI6ImFjY2VzcyJ9.bnIjpMWSNLPYy7feVsJrwHuetKSTOv855Zrs98h1xz8'
+const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LnVzZXIuMTc2MTk1OTkyMzYwOEBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiUGVkcm8iLCJsYXN0X25hbWUiOiJMXHUwMGYzcGV6IiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYyMDM5MjUwLCJpYXQiOjE3NjIwMzgzNTAsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.P1VQbjRRtgyVlqiDmJVPFJPYB19WoOjwPIJu1SNzEY0'
 
 export const options = {
     stages: [
