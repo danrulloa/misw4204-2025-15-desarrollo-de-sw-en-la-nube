@@ -32,6 +32,7 @@ jobs:
         id: filter
         uses: dorny/paths-filter@v3
         with:
+          list-files: json
           filters: |
             core:
               - 'core/**'
@@ -39,6 +40,30 @@ jobs:
               - 'auth_service/**'
             worker:
               - 'worker/**'
+
+      - name: Debug - decision inputs
+        shell: bash
+        env:
+          CORE: ${{ steps.filter.outputs.core }}
+          AUTH: ${{ steps.filter.outputs.auth }}
+          WORKER: ${{ steps.filter.outputs.worker }}
+          CORE_FILES: ${{ steps.filter.outputs.core_files }}
+          AUTH_FILES: ${{ steps.filter.outputs.auth_files }}
+          WORKER_FILES: ${{ steps.filter.outputs.worker_files }}
+        run: |
+          echo "Event before: ${GITHUB_EVENT_BEFORE:-${{ github.event.before }}}"
+          echo "Event after:  ${GITHUB_SHA:-${{ github.sha }}}"
+          echo "\nGit changed files:" | tee -a "$GITHUB_STEP_SUMMARY"
+          git fetch --no-tags --prune --depth=2 origin ${{ github.ref }} >/dev/null 2>&1 || true
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "\nPaths-filter outputs:" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "core:   ${CORE}"   | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "auth:   ${AUTH}"   | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "worker: ${WORKER}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "\nMatched files per filter (from paths-filter):" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "core_files:   ${CORE_FILES}"   | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "auth_files:   ${AUTH_FILES}"   | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "worker_files: ${WORKER_FILES}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   build-core:
     needs: changes
