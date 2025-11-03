@@ -2,7 +2,7 @@ name: 01 - Build & Push (Docker Hub)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["develop" ]
     paths:
       - "auth_service/**"
       - "core/**"
