@@ -21,6 +21,10 @@ rds_password="${rds_password}"
 
 # S3 bucket (vacío si no se usa S3)
 s3_bucket="${s3_bucket}"
+aws_access_key_id="${aws_access_key_id}"
+aws_secret_access_key="${aws_secret_access_key}"
+aws_session_token="${aws_session_token}"
+aws_region="${aws_region}"
 
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release git
@@ -95,10 +99,14 @@ ALGORITHM=HS256
 %{ if s3_bucket != "" ~}
 STORAGE_BACKEND=s3
 S3_BUCKET=${s3_bucket}
-S3_REGION=us-east-1
+S3_REGION=${aws_region}
 S3_PREFIX=uploads
 S3_FORCE_PATH_STYLE=0
 S3_VERIFY_SSL=1
+# Credenciales explícitas para S3 (fail-fast en la app si faltan)
+AWS_ACCESS_KEY_ID=${aws_access_key_id}
+AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+AWS_SESSION_TOKEN=${aws_session_token}
 %{ else ~}
 STORAGE_BACKEND=local
 %{ endif ~}

@@ -16,6 +16,9 @@ class S3StorageAdapter(StoragePort):
         endpoint_url: Optional[str] = None,
         force_path_style: bool = False,
         verify_ssl: bool = True,
+        access_key_id: Optional[str] = None,
+        secret_access_key: Optional[str] = None,
+        session_token: Optional[str] = None,
     ) -> None:
         self.bucket = bucket
         self.prefix = prefix.strip("/")
@@ -23,14 +26,35 @@ class S3StorageAdapter(StoragePort):
         self.endpoint_url = endpoint_url
         self.force_path_style = force_path_style
         self.verify_ssl = verify_ssl
+        self.access_key_id = access_key_id
+        self.secret_access_key = secret_access_key
+        self.session_token = session_token
 
         # Lazy import to avoid hard dependency when not used
         import boto3  # type: ignore
         from botocore.config import Config  # type: ignore
+        from botocore.exceptions import NoCredentialsError  # type: ignore
+
+        # Fail fast si faltan datos críticos
+        missing = []
+        if not self.bucket:
+            missing.append("S3 bucket")
+        if not self.region:
+            missing.append("S3 region")
+        if not self.access_key_id:
+            missing.append("AWS_ACCESS_KEY_ID")
+        if not self.secret_access_key:
+            missing.append("AWS_SECRET_ACCESS_KEY")
+        if missing:
+            raise RuntimeError(f"Configuración S3/AWS incompleta: falta(n) {', '.join(missing)}")
 
         config = Config(s3={"addressing_style": "path"} if self.force_path_style else {})
+        # Crear cliente con credenciales explícitas (sin cadena de proveedores)
         self._s3 = boto3.client(
             "s3",
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            aws_session_token=self.session_token,
             region_name=self.region,
             endpoint_url=self.endpoint_url,
             config=config,

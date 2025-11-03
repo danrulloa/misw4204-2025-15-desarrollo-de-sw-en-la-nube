@@ -140,6 +140,9 @@ $env:AWS_SESSION_TOKEN="..."
 $env:AWS_REGION="us-east-1"
 ```
 
+#### 2.2.1 Cómo usa Terraform estas variables ahora
+No necesitas definir variables TF_VAR_*. Terraform leerá directamente estas variables de entorno (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN y AWS_REGION) y las inyectará a las instancias vía user-data.
+
 ### 2.3 Verificar credenciales
 
 ```bash

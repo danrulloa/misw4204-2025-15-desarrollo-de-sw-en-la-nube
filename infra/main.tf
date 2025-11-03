@@ -13,6 +13,7 @@ variable "region" {
   type    = string
   default = "us-east-1"
 }
+## Credenciales AWS para S3 (opcionalmente definir vía TF_VAR_*)
 variable "key_name" {
   type        = string
   description = "Nombre de Key Pair existente (p.ej. 'vockey' en AWS Academy). Vacío = sin SSH."
@@ -98,6 +99,19 @@ variable "instance_type_obs" {
 }
 
 provider "aws" { region = var.region }
+
+# ========== Leer credenciales AWS desde variables de entorno del host que ejecuta Terraform ==========
+# Esto permite usar directamente AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN / AWS_REGION
+# sin necesidad de definir TF_VAR_*.
+data "external" "aws_env" {
+  program = [
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "Write-Output ((@{ aws_access_key_id = $Env:AWS_ACCESS_KEY_ID; aws_secret_access_key = $Env:AWS_SECRET_ACCESS_KEY; aws_session_token = $Env:AWS_SESSION_TOKEN; aws_region = $Env:AWS_REGION } | ConvertTo-Json -Compress))"
+  ]
+}
 
 # ========== VPC/Subred por defecto ==========
 data "aws_vpc" "default" { default = true }
@@ -718,7 +732,11 @@ resource "aws_instance" "core" {
     rds_core_endpoint = aws_db_instance.core.address,
     rds_auth_endpoint = aws_db_instance.auth.address,
     rds_password      = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket
+    s3_bucket         = aws_s3_bucket.anb_videos.bucket,
+    aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
+    aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
+    aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
+    aws_region            = try(data.external.aws_env.result.aws_region, var.region)
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
@@ -750,7 +768,11 @@ resource "aws_instance" "worker" {
     rds_core_endpoint = "", # Worker no necesita RDS directamente
     rds_auth_endpoint = "",
     rds_password      = "",
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket # Worker necesita S3 para leer videos
+    s3_bucket         = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
+    aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
+    aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
+    aws_region            = try(data.external.aws_env.result.aws_region, var.region)
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {

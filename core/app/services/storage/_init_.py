@@ -14,5 +14,8 @@ def get_storage() -> StoragePort:
             endpoint_url=settings.S3_ENDPOINT_URL or None,
             force_path_style=settings.S3_FORCE_PATH_STYLE,
             verify_ssl=settings.S3_VERIFY_SSL,
+            access_key_id=settings.AWS_ACCESS_KEY_ID,
+            secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            session_token=settings.AWS_SESSION_TOKEN,
         )
     return LocalStorageAdapter()

@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     S3_FORCE_PATH_STYLE: bool = bool(int(os.getenv("S3_FORCE_PATH_STYLE", "0")))
     S3_VERIFY_SSL: bool = bool(int(os.getenv("S3_VERIFY_SSL", "1")))
 
+    # Credenciales AWS (fail-fast, se leen del entorno y se pasan explícitamente a boto3)
+    AWS_ACCESS_KEY_ID: str | None = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_SESSION_TOKEN: str | None = os.getenv("AWS_SESSION_TOKEN")
+
     class Config:
         env_file = ".env"
         case_sensitive = True
