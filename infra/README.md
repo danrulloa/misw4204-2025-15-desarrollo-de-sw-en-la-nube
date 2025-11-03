@@ -361,6 +361,9 @@ terraform plan -var-file=".\terraform.tfvars"
 
 # Crear recursos (apply)
 terraform apply -var-file=".\terraform.tfvars"
+
+# Tener el destroy mas cerca
+terraform destroy -var-file=".\terraform.tfvars"
 ```
 
 **Tiempo estimado**: ~15-20 minutos

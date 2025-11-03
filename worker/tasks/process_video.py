@@ -302,38 +302,53 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
 
 
 def _compute_output_path(original_input, processed_dir, video_src):
-    """Compute output Path, retornando ruta S3 si input era S3."""
+    """Compute output path (string). If input is S3, return an S3 URL string.
+
+    For local inputs return a filesystem path string under `processed_dir`.
+    """
     input_str = str(original_input)
-    
-    # Si input era S3, output también debe ser S3
+
+    # Si input era S3, output también debe ser S3 (retornamos string)
     if _is_s3_path(input_str):
-        # original_input: s3://bucket/uploads/2025/11/02/uuid.mp4
-        # output: s3://bucket/processed/2025/11/02/uuid.mp4
         bucket, key = _parse_s3_path(input_str)
-        # Cambiar prefix de uploads a processed
         if key.startswith('uploads/'):
             processed_key = key.replace('uploads/', 'processed/', 1)
         else:
-            # Fallback: agregar processed/
             processed_key = f'processed/{key}'
         return f"s3://{bucket}/{processed_key}"
-    
-    # Comportamiento original para local
+
+    # Local: construir path bajo processed_dir y devolver como string
     if input_str.startswith(MNT_UPLOADS_PREFIX):
         rel = input_str[len(MNT_UPLOADS_PREFIX):]
         rel = rel.lstrip('/')
-        return Path(processed_dir) / rel
-    return Path(processed_dir) / video_src.name
+        return (Path(processed_dir) / rel).as_posix()
+    return (Path(processed_dir) / video_src.name).as_posix()
 
 
 def _ensure_parent_dir(path):
-    """Try to create parent directory, but don't raise on PermissionError (CI)."""
+    """Try to create parent directory, but accept str or Path.
+
+    - If `path` is an S3 URL (starts with 's3://') do nothing.
+    - If `path` is a string, convert to `Path` before using `.parent`.
+    - Handle PermissionError (CI) by warning instead of raising.
+    """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # If caller passed a string, handle S3 or convert to Path
+        if isinstance(path, str):
+            if _is_s3_path(path):
+                # S3 outputs don't have local parent directories
+                return
+            path = Path(path)
+
+        parent = path.parent
+        parent.mkdir(parents=True, exist_ok=True)
     except PermissionError:
-        logger.warning('No permission to create processed directory %s; continuing (CI/test environment?)', path.parent)
+        logger.warning(
+            'No permission to create processed directory %s; continuing (CI/test environment?)',
+            parent,
+        )
     except Exception as e:
-        logger.error('Failed creating processed directory %s: %s', path.parent, e)
+        logger.error('Failed creating processed directory %s: %s', parent, e)
         raise
 
 
@@ -468,11 +483,11 @@ def run(self, *args, **kwargs):
         _ensure_parent_dir(output_path)
 
         # Determinar si el output es S3 o local
-        is_s3_output = _is_s3_path(str(output_path))
-        
+        is_s3_output = _is_s3_path(output_path)
+
         if is_s3_output:
-            # Output es S3: convertir a string y subir
-            output_str = str(output_path)
+            # Output es S3: enviar la ruta tal cual (string) a la función de upload
+            output_str = output_path
             try:
                 _upload_to_s3(out_file, output_str)
                 logger.info('Subido archivo procesado a S3: %s', output_str)
@@ -485,13 +500,9 @@ def run(self, *args, **kwargs):
                 logger.error('Failed to upload output to S3: %s', e)
                 raise task_self.retry(exc=e, countdown=10, max_retries=2)
         else:
-            # Output es local: comportamiento original
-            # Use a POSIX-style string for the returned path so tests are consistent across OS
-            output_str = output_path.as_posix()
-
-            # Move final file into the processed storage location
+            # Output es local: output_path es ya un string de filesystem
+            output_str = output_path
             try:
-                # Pass the same string we will return (POSIX) to the move operation; shutil on Windows accepts '/' separator too
                 shutil.move(str(out_file), output_str)
                 logger.info('Moved processed file to %s', output_str)
             except Exception as e:
