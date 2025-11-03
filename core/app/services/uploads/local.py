@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from typing import Dict, Tuple
@@ -9,6 +10,8 @@ from app.config import settings
 from app.models.video import Video, VideoStatus
 from app.services.storage._init_ import get_storage
 from app.services.mq.rabbit import RabbitPublisher
+
+logger = logging.getLogger("anb.uploads")
 
 
 class LocalUploadService:
@@ -37,6 +40,7 @@ class LocalUploadService:
                 upload_file.content_type or "application/octet-stream",
             )
         except Exception as e:
+            logger.exception("Upload failed storing file in backend", extra={"user_id": user_id, "title": title})
             raise HTTPException(status_code=502, detail=f"Error guardando archivo en storage: {e}")
 
         video = Video(
@@ -91,8 +95,10 @@ class LocalUploadService:
             video.status = VideoStatus.uploaded
             video.correlation_id = None
             await db.rollback()
+            logger.exception("Upload failed enqueuing message", extra={"video_id": str(video.id), "correlation_id": correlation_id})
             raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
+        logger.info("Upload completed", extra={"video_id": str(video.id), "correlation_id": correlation_id, "user_id": user_id})
         return video, correlation_id
 
     def _validate_ext_and_size(self, file: UploadFile):
