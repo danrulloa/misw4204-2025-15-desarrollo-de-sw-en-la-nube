@@ -105,12 +105,50 @@ except Exception:
 # ---------------------------
 _task_starts = {}
 if _PROM_AVAILABLE:
-    TASKS_PROCESSED = Counter(
-        'anb_worker_tasks_total', 'Total de tareas procesadas por el worker', ['task_name', 'status']
-    )
-    TASK_DURATION = Histogram(
-        'anb_worker_task_duration_seconds', 'Duración de tareas en segundos', ['task_name']
-    )
+    # Guardar los nombres base que podrían haber sido registrados por reloads/tests
+    try:
+        from prometheus_client import REGISTRY
+
+        def _get_existing_collector(candidates):
+            for n in candidates:
+                if n in REGISTRY._names_to_collectors:
+                    return REGISTRY._names_to_collectors[n]
+            return None
+
+        # Try to reuse an already-registered Counter to avoid ValueError on module reload
+        TASKS_PROCESSED = _get_existing_collector([
+            'anb_worker_tasks',
+            'anb_worker_tasks_total',
+            'anb_worker_tasks_created',
+        ]) or Counter(
+            'anb_worker_tasks',
+            'Number of worker tasks processed',
+            ['task_name', 'status'],
+        )
+
+        # Same for duration histogram
+        TASK_DURATION = _get_existing_collector([
+            'anb_worker_task_duration_seconds',
+        ]) or Histogram(
+            'anb_worker_task_duration_seconds', 'Duración de tareas en segundos', ['task_name']
+        )
+    except Exception:
+        # Fallback defensivo: attempt creation and swallow duplicate registration errors
+        try:
+            TASKS_PROCESSED = Counter(
+                'anb_worker_tasks',
+                'Number of worker tasks processed',
+                ['task_name', 'status'],
+            )
+        except Exception:
+            TASKS_PROCESSED = None
+        try:
+            TASK_DURATION = Histogram(
+                'anb_worker_task_duration_seconds', 'Duración de tareas en segundos', ['task_name']
+            )
+        except Exception:
+            TASK_DURATION = None
+
     # Inicia el servidor de métricas solo una vez (padre) para evitar conflictos de puerto
     try:
         if not os.environ.get('ANB_METRICS_STARTED'):
