@@ -46,3 +46,8 @@ scrape_configs:
     static_configs:
       - targets: ["__CORE_IP__:8000"]
 
+  - job_name: "worker"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["__WORKER_IP__:9100"]
+

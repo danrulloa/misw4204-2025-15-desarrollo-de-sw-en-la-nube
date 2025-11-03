@@ -70,6 +70,12 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 - `rds_instance_class` - Tipo de instancia RDS (default: `db.t3.micro`)
 - `repo_branch` - Rama del repositorio a clonar (default: `develop`)
 
+#### Variables para assets del Worker (obligatorias)
+- `assets_inout_path` (string) Ruta local del archivo de intro/outro para subir a S3 durante `terraform apply`. Obligatoria.
+- `assets_wm_path` (string) Ruta local del archivo de watermark para subir a S3 durante `terraform apply`. Obligatoria.
+- `assets_inout_key` (string, default: `assets/inout.mp4`) Clave destino en S3 para el asset de intro/outro.
+- `assets_wm_key` (string, default: `assets/watermark.png`) Clave destino en S3 para el asset de watermark.
+
 ### Cambios en `userdata.sh.tftpl`
 
 El script de user-data ahora:
@@ -297,6 +303,16 @@ rds_instance_class = "db.t3.micro"
 
 # Archivo compose a usar (default: docker-compose.multihost.yml)
 # compose_file = "docker-compose.multihost.yml"
+
+# ========================================
+# Subir assets del Worker a S3 (obligatorio)
+# ========================================
+# Rutas locales a los archivos en tu PC (Terraform los sube al bucket S3 creado)
+assets_inout_path = "C:/ruta/a/inout.mp4"   # En Windows usa comillas
+assets_wm_path    = "C:/ruta/a/watermark.png"
+# Claves destino en el bucket S3 (puedes dejarlas por defecto)
+# assets_inout_key = "assets/inout.mp4"
+# assets_wm_key    = "assets/watermark.png"
 ```
 
 **Ejemplo completo con valores reales:**

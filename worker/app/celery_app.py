@@ -3,8 +3,16 @@ import logging
 import sys
 import traceback
 import os
+import time
 
 from kombu import Exchange, Queue
+
+# Prometheus metrics (export to /metrics via start_http_server)
+try:
+    from prometheus_client import Counter, Histogram, start_http_server
+    _PROM_AVAILABLE = True
+except Exception:
+    _PROM_AVAILABLE = False
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -92,16 +100,44 @@ except Exception:
     traceback.print_exc()
     raise
 
+# ---------------------------
+# Prometheus metrics exporter
+# ---------------------------
+_task_starts = {}
+if _PROM_AVAILABLE:
+    TASKS_PROCESSED = Counter(
+        'anb_worker_tasks_total', 'Total de tareas procesadas por el worker', ['task_name', 'status']
+    )
+    TASK_DURATION = Histogram(
+        'anb_worker_task_duration_seconds', 'Duración de tareas en segundos', ['task_name']
+    )
+    # Inicia el servidor de métricas solo una vez (padre) para evitar conflictos de puerto
+    try:
+        if not os.environ.get('ANB_METRICS_STARTED'):
+            port = int(os.environ.get('WORKER_METRICS_PORT', '9100'))
+            start_http_server(port)
+            os.environ['ANB_METRICS_STARTED'] = '1'
+            logger.info('Prometheus metrics server iniciado en puerto %s', port)
+    except Exception:
+        logger.exception('No se pudo iniciar el servidor de métricas Prometheus')
+
 
 # handler para registrar fallos y empujar metadata a la DLQ (informativo)
 from celery.signals import task_failure  # noqa: E402
 import json  # noqa: E402
 from kombu import Connection, Producer  # noqa: E402
+from celery.signals import task_prerun, task_postrun  # noqa: E402
 
 
 @task_failure.connect
 def on_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs=None, einfo=None, **kw):
     logger.error(f'Tarea fallida: {sender} id={task_id} exc={exception}')
+    # Métricas
+    try:
+        if _PROM_AVAILABLE:
+            TASKS_PROCESSED.labels(task_name=getattr(sender, 'name', 'unknown'), status='failure').inc()
+    except Exception:
+        pass
     try:
         # Publicar metadata en la exchange del DLQ para facilitar inspección (no obligatorio)
         conn = Connection(BROKER_URL)
@@ -118,3 +154,24 @@ def on_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs
             producer.publish(payload, exchange=app.VIDEO_DLX_EXCHANGE, routing_key=app.VIDEO_DLQ_ROUTING_KEY, declare=[dlq_queue])
     except Exception as e:
         logger.error(f'No se pudo publicar metadata en DLQ: {e}')
+
+
+@task_prerun.connect
+def on_task_prerun(task_id=None, task=None, *args, **kwargs):
+    try:
+        _task_starts[task_id] = time.time()
+    except Exception:
+        pass
+
+
+@task_postrun.connect
+def on_task_postrun(task_id=None, task=None, retval=None, state=None, **kwargs):
+    try:
+        name = getattr(task, 'name', 'unknown')
+        if _PROM_AVAILABLE:
+            TASKS_PROCESSED.labels(task_name=name, status='success' if state == 'SUCCESS' else str(state or 'unknown')).inc()
+            start_t = _task_starts.pop(task_id, None)
+            if start_t:
+                TASK_DURATION.labels(task_name=name).observe(max(0.0, time.time() - start_t))
+    except Exception:
+        pass

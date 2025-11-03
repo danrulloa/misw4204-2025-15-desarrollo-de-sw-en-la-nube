@@ -25,6 +25,8 @@ aws_access_key_id="${aws_access_key_id}"
 aws_secret_access_key="${aws_secret_access_key}"
 aws_session_token="${aws_session_token}"
 aws_region="${aws_region}"
+assets_inout_key="${assets_inout_key}"
+assets_wm_key="${assets_wm_key}"
 
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release git
@@ -58,7 +60,6 @@ LOKI_URL_VALUE="http://$alb_dns/loki/api/v1/push"
 cat > /opt/anb-cloud/.env <<EOF
 APP_ENV=production
 API_TAG=latest
-LOKI_URL=$LOKI_URL_VALUE
 
 # CORE & AUTH DBs
 POSTGRES_USER=anb_user
@@ -112,6 +113,9 @@ STORAGE_BACKEND=local
 %{ endif ~}
 EOF
 
+# Exportar LOKI_URL sólo en el entorno de la sesión (no en .env)
+export LOKI_URL="$LOKI_URL_VALUE"
+
 # Configurar prometheus con IPs dinámicas solo en OBS
 if [ "$ROLE" = "obs" ]; then
   # External URL para que la UI de Prometheus genere enlaces con el prefijo /prometheus
@@ -149,6 +153,25 @@ if [ "$ROLE" = "web" ]; then
 fi
 
 # ----- Arranque por perfil -----
+# Si el rol es worker y hay bucket S3 definido, sincronizar assets locales desde S3
+if [ "$ROLE" = "worker" ]; then
+  %{ if s3_bucket != "" ~}
+  echo "Sincronizando assets del worker desde S3 (obligatorio)..."
+  apt-get install -y awscli || true
+  export AWS_ACCESS_KEY_ID="${aws_access_key_id}"
+  export AWS_SECRET_ACCESS_KEY="${aws_secret_access_key}"
+  export AWS_SESSION_TOKEN="${aws_session_token}"
+  export AWS_DEFAULT_REGION="${aws_region}"
+  mkdir -p /opt/anb-cloud/worker/assets
+  # Descarga obligatoria de assets; falla si no existen en S3
+  aws s3 cp "s3://${s3_bucket}/${assets_inout_key}" \
+    /opt/anb-cloud/worker/assets/inout.mp4 --region "${aws_region}"
+  aws s3 cp "s3://${s3_bucket}/${assets_wm_key}" \
+    /opt/anb-cloud/worker/assets/watermark.png --region "${aws_region}"
+  ls -lh /opt/anb-cloud/worker/assets || true
+  %{ endif ~}
+fi
+
 case "$ROLE" in
   web)    docker compose -f "$COMPOSE_FILE" --profile web    up -d ;;
   core)   docker compose -f "$COMPOSE_FILE" --profile core   up -d ;;

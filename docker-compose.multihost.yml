@@ -256,6 +256,10 @@ services:
       - CELERY_RESULT_BACKEND=rpc://
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
+    ports:
+      - "9100:9100"    # Prometheus metrics endpoint
+    volumes:
+      - ./worker/assets:/app/assets:ro
     networks: [ internal ]
     logging:
       driver: json-file
@@ -320,6 +324,24 @@ services:
     volumes:
       - ./observability/loki/config.yml:/etc/loki/config.yml:ro
       - loki_data:/loki
+    restart: unless-stopped
+    networks: [ internal ]
+
+  # Log shipper on WORKER host
+  promtail-worker:
+    profiles: ["worker","obs-agent"]
+    image: grafana/promtail:2.9.4
+    container_name: promtail-worker
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      - LOKI_URL=${LOKI_URL}
+    volumes:
+      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
     networks: [ internal ]
 

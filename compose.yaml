@@ -164,6 +164,8 @@ services:
       - ./worker/assets:/app/assets:ro
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
+    ports:
+      - "9100:9100"  # Prometheus metrics endpoint
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -405,6 +407,8 @@ services:
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOKI_URL=${LOKI_URL}
     depends_on:
       - loki
     restart: unless-stopped

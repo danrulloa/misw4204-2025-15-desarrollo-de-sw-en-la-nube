@@ -8,6 +8,7 @@ from pathlib import Path
 import psycopg
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +52,48 @@ def _parse_s3_path(s3_path: str) -> tuple[str, str]:
     return parts[0], parts[1] if len(parts) > 1 else ''
 
 
+def _make_s3_client():
+    """Crea un cliente S3 alineado con el adapter del core, usando credenciales explícitas.
+
+    - Requiere: S3_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+    - Opcionales: AWS_SESSION_TOKEN, S3_ENDPOINT_URL, S3_FORCE_PATH_STYLE, S3_VERIFY_SSL
+    """
+    s3_region = os.getenv('S3_REGION')
+    endpoint_url = os.getenv('S3_ENDPOINT_URL')
+    force_path_style = bool(int(os.getenv('S3_FORCE_PATH_STYLE', '0')))
+    verify_ssl = bool(int(os.getenv('S3_VERIFY_SSL', '1')))
+
+    access_key = os.getenv('AWS_ACCESS_KEY_ID')
+    secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+    session_token = os.getenv('AWS_SESSION_TOKEN')
+
+    missing = []
+    if not s3_region:
+        missing.append('S3_REGION')
+    if not access_key:
+        missing.append('AWS_ACCESS_KEY_ID')
+    if not secret_key:
+        missing.append('AWS_SECRET_ACCESS_KEY')
+    if missing:
+        raise RuntimeError(f"Configuración S3/AWS incompleta: falta(n) {', '.join(missing)}")
+
+    config = Config(s3={'addressing_style': 'path'} if force_path_style else {})
+    return boto3.client(
+        's3',
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        aws_session_token=session_token,
+        region_name=s3_region,
+        endpoint_url=endpoint_url,
+        config=config,
+        verify=verify_ssl,
+    )
+
+
 def _download_from_s3(s3_path: str, local_path: Path) -> Path:
     """Descarga archivo desde S3 a path local. Retorna Path local."""
     bucket, key = _parse_s3_path(s3_path)
-    s3_region = os.getenv('S3_REGION', 'us-east-1')
-    s3_client = boto3.client('s3', region_name=s3_region)
+    s3_client = _make_s3_client()
     
     local_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -71,8 +109,7 @@ def _download_from_s3(s3_path: str, local_path: Path) -> Path:
 def _upload_to_s3(local_path: Path, s3_path: str) -> str:
     """Sube archivo local a S3. Retorna ruta S3."""
     bucket, key = _parse_s3_path(s3_path)
-    s3_region = os.getenv('S3_REGION', 'us-east-1')
-    s3_client = boto3.client('s3', region_name=s3_region)
+    s3_client = _make_s3_client()
     
     try:
         s3_client.upload_file(str(local_path), bucket, key)
@@ -358,6 +395,12 @@ def run(self, *args, **kwargs):
     if not input_path:
         raise ValueError('process_video.run requires input_path as first or second positional argument')
 
+    # Validación estricta: requerimos DB_URL_CORE en el entorno (RDS)
+    db_url_env = os.environ.get('DB_URL_CORE')
+    if not db_url_env:
+        # Fallar temprano si falta configuración crítica
+        raise RuntimeError('DB_URL_CORE no está definido en el entorno y es obligatorio para actualizar el estado en RDS')
+
     # Keep original incoming path (from API message) for later mirroring
     original_input = input_path
     video_src = _resolve_worker_path(original_input)
@@ -456,8 +499,7 @@ def run(self, *args, **kwargs):
                 raise task_self.retry(exc=e, countdown=10, max_retries=2)
 
         # Update database record for the video if video_id is available (direct DB update)
-        db_url = os.getenv('DATABASE_URL') or os.getenv('DB_URL')
-        _update_db_if_needed(video_id, correlation_id, output_str, db_url)
+        _update_db_if_needed(video_id, correlation_id, output_str, db_url_env)
 
         # Return the final path so caller (API) can register it
         return {"status": "ok", "output": output_str}

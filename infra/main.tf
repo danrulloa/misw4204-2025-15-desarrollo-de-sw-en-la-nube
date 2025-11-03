@@ -72,6 +72,37 @@ variable "rds_instance_class" {
   default     = "db.t3.micro"
 }
 
+# Assets del worker (opcional): rutas locales para subir a S3 y claves destino
+variable "assets_inout_path" {
+  type        = string
+  description = "Ruta local del archivo de intro/outro a subir a S3 (obligatorio)."
+  validation {
+    condition     = length(var.assets_inout_path) > 0
+    error_message = "Debe proporcionar assets_inout_path (ruta local del archivo de intro/outro)."
+  }
+}
+
+variable "assets_wm_path" {
+  type        = string
+  description = "Ruta local del archivo de watermark a subir a S3 (obligatorio)."
+  validation {
+    condition     = length(var.assets_wm_path) > 0
+    error_message = "Debe proporcionar assets_wm_path (ruta local del archivo de watermark)."
+  }
+}
+
+variable "assets_inout_key" {
+  type        = string
+  description = "Clave (key) en S3 para el asset de intro/outro."
+  default     = "assets/inout.mp4"
+}
+
+variable "assets_wm_key" {
+  type        = string
+  description = "Clave (key) en S3 para el asset de watermark."
+  default     = "assets/watermark.png"
+}
+
 # Tipos por rol (compatibles con el lab)
 variable "instance_type_web" {
   type    = string
@@ -630,6 +661,16 @@ resource "aws_security_group_rule" "worker_from_obs_8080" {
   source_security_group_id = aws_security_group.obs.id
 }
 
+# Allow Prometheus (OBS) to scrape WORKER metrics exporter (9100)
+resource "aws_security_group_rule" "worker_from_obs_9100" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.worker.id
+  from_port                = 9100
+  to_port                  = 9100
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
 resource "aws_security_group_rule" "obs_ssh" {
   type              = "ingress"
   security_group_id = aws_security_group.obs.id
@@ -670,6 +711,8 @@ resource "aws_instance" "db" {
     rds_auth_endpoint     = "",
     rds_password          = "",
     s3_bucket             = "",
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
     aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
     aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
@@ -705,6 +748,8 @@ resource "aws_instance" "mq" {
     rds_auth_endpoint     = "",
     rds_password          = "",
     s3_bucket             = "",
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
     aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
     aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
@@ -741,6 +786,8 @@ resource "aws_instance" "core" {
     rds_auth_endpoint     = aws_db_instance.auth.address,
     rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
     s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
     aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
     aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
@@ -760,7 +807,7 @@ resource "aws_instance" "worker" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.worker.id]
-  depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos]
+  depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "worker",
     repo_url              = var.repo_url,
@@ -773,10 +820,12 @@ resource "aws_instance" "worker" {
     worker_ip             = "",
     obs_ip                = "",
     alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = "", # Worker no necesita RDS directamente
+    rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = "",
     rds_password          = "",
     s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    assets_inout_key      = var.assets_inout_key,
+    assets_wm_key         = var.assets_wm_key,
     aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
     aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
     aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
@@ -813,6 +862,8 @@ resource "aws_instance" "obs" {
     rds_auth_endpoint     = "",
     rds_password          = "",
     s3_bucket             = "",
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
     aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
     aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
@@ -913,6 +964,21 @@ resource "aws_s3_bucket_public_access_block" "anb_videos" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+# Objetos S3 opcionales: subir assets del worker si se proporcionan rutas locales
+resource "aws_s3_object" "asset_inout" {
+  bucket = aws_s3_bucket.anb_videos.bucket
+  key    = var.assets_inout_key
+  source = var.assets_inout_path
+  etag   = filemd5(var.assets_inout_path)
+}
+
+resource "aws_s3_object" "asset_wm" {
+  bucket = aws_s3_bucket.anb_videos.bucket
+  key    = var.assets_wm_key
+  source = var.assets_wm_path
+  etag   = filemd5(var.assets_wm_path)
 }
 
 # ========== Application Load Balancer ==========
