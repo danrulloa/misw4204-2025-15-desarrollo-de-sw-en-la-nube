@@ -1,5 +1,7 @@
 #!/bin/bash
-set -eux
+set -euo pipefail
+# Log a archivo y consola para facilitar troubleshooting de bootstrap
+exec > >(tee -a /var/log/anb-bootstrap.log) 2>&1
 
 ROLE="${role}"
 REPO_URL="${repo_url}"
@@ -155,6 +157,7 @@ fi
 # ----- Arranque por perfil -----
 # Si el rol es worker y hay bucket S3 definido, sincronizar assets locales desde S3
 if [ "$ROLE" = "worker" ]; then
+  : # no-op para evitar bloque vacío si el template no inyecta contenido
   %{ if s3_bucket != "" ~}
   echo "Sincronizando assets del worker desde S3 (obligatorio)..."
   apt-get install -y awscli || true
@@ -172,12 +175,29 @@ if [ "$ROLE" = "worker" ]; then
   %{ endif ~}
 fi
 
+# Descubrir archivo compose de forma robusta
+COMPOSE_PATH=""
+if [ -f "$COMPOSE_FILE" ]; then
+  COMPOSE_PATH="$COMPOSE_FILE"
+elif [ -f "docker-compose.multihost.yml" ]; then
+  COMPOSE_PATH="docker-compose.multihost.yml"
+elif [ -f "deploy/compose/docker-compose.multihost.yml" ]; then
+  COMPOSE_PATH="deploy/compose/docker-compose.multihost.yml"
+else
+  echo "[anb] ERROR: No se encontró archivo compose. Probados: $COMPOSE_FILE, docker-compose.multihost.yml, deploy/compose/docker-compose.multihost.yml" >&2
+  ls -la || true
+  exit 1
+fi
+echo "[anb] Usando compose: $COMPOSE_PATH"
+
 case "$ROLE" in
-  web)    docker compose -f "$COMPOSE_FILE" --profile web    up -d ;;
-  core)   docker compose -f "$COMPOSE_FILE" --profile core   up -d ;;
-  db)     docker compose -f "$COMPOSE_FILE" --profile db     up -d ;;
-  mq)     docker compose -f "$COMPOSE_FILE" --profile mq     up -d ;;
-  worker) docker compose -f "$COMPOSE_FILE" --profile worker up -d ;;
-  obs)    docker compose -f "$COMPOSE_FILE" --profile obs    up -d ;;
+  web)    docker compose -f "$COMPOSE_PATH" --profile web    up -d ;;
+  core)   docker compose -f "$COMPOSE_PATH" --profile core   up -d ;;
+  db)     docker compose -f "$COMPOSE_PATH" --profile db     up -d ;;
+  mq)     docker compose -f "$COMPOSE_PATH" --profile mq     up -d ;;
+  worker) docker compose -f "$COMPOSE_PATH" --profile worker up -d ;;
+  obs)    docker compose -f "$COMPOSE_PATH" --profile obs    up -d ;;
 esac
+
+docker compose -f "$COMPOSE_PATH" ps || true
 

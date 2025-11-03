@@ -940,7 +940,9 @@ resource "random_id" "bucket_suffix" {
 
 resource "aws_s3_bucket" "anb_videos" {
   bucket = "anb-basketball-bucket-${random_id.bucket_suffix.hex}"
-  tags   = local.tags_base
+  # Elimina el bucket aunque tenga objetos y versiones (provider aws >= 5)
+  force_destroy = true
+  tags          = local.tags_base
 }
 
 resource "aws_s3_bucket_versioning" "anb_videos" {

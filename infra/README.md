@@ -26,6 +26,7 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 - **S3 Bucket**: Almacenamiento de videos (`anb-basketball-bucket-*`)
   - Carpeta `uploads/` para videos originales
   - Carpeta `processed/` para videos procesados
+   - Destrucción: configurado con `force_destroy = true` para eliminar el bucket aunque tenga objetos y versiones
 - **Application Load Balancer (ALB)**: Balanceador de carga público
   - Recibe tráfico HTTP en puerto 80
   - Distribuye carga a instancias Core

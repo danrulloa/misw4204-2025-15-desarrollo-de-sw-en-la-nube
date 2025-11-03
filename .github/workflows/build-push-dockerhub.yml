@@ -7,7 +7,6 @@ on:
       - "auth_service/**"
       - "core/**"
       - "worker/**"
-      - "nginx/**"
       - ".github/workflows/build-push-dockerhub.yml"
   workflow_dispatch:
 
@@ -20,35 +19,75 @@ env:
   VERSION: 1.0.${{ github.run_number }}
 
 jobs:
-  build-push:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      auth: ${{ steps.filter.outputs.auth }}
+      worker: ${{ steps.filter.outputs.worker }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            core:
+              - 'core/**'
+            auth:
+              - 'auth_service/**'
+            worker:
+              - 'worker/**'
+
+  build-core:
+    needs: changes
+    if: ${{ needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Compute tags
+        id: vars
         run: |
-          echo "SHORT_SHA=$(echo ${GITHUB_SHA:-local} | cut -c1-7)" >> $GITHUB_ENV
-          echo "Using VERSION=${{ env.VERSION }} SHORT_SHA=${SHORT_SHA}"
-
-      - name: Build & push anb-api
+          echo "short=$(echo ${GITHUB_SHA:-local} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "Using VERSION=${{ env.VERSION }} SHORT_SHA=${GITHUB_SHA::7}"
+      - name: Build & push anb-core
         uses: docker/build-push-action@v6
         with:
           context: ./core
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:${{ env.VERSION }}-${{ steps.vars.outputs.short }}
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-core:latest
 
+  build-auth:
+    needs: changes
+    if: ${{ needs.changes.outputs.auth == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Compute tags
+        id: vars
+        run: |
+          echo "short=$(echo ${GITHUB_SHA:-local} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "Using VERSION=${{ env.VERSION }} SHORT_SHA=${GITHUB_SHA::7}"
       - name: Build & push anb-auth
         uses: docker/build-push-action@v6
         with:
@@ -56,9 +95,28 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:${{ env.VERSION }}-${{ steps.vars.outputs.short }}
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-auth:latest
 
+  build-worker:
+    needs: changes
+    if: ${{ needs.changes.outputs.worker == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Compute tags
+        id: vars
+        run: |
+          echo "short=$(echo ${GITHUB_SHA:-local} | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "Using VERSION=${{ env.VERSION }} SHORT_SHA=${GITHUB_SHA::7}"
       - name: Build & push anb-worker
         uses: docker/build-push-action@v6
         with:
@@ -66,5 +124,5 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}
-            ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}-${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:${{ env.VERSION }}-${{ steps.vars.outputs.short }}
             ${{ env.DOCKERHUB_NAMESPACE }}/anb-worker:latest
