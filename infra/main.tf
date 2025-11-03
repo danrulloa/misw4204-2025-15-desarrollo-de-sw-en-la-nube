@@ -75,7 +75,8 @@ variable "rds_instance_class" {
 # Assets del worker (opcional): rutas locales para subir a S3 y claves destino
 variable "assets_inout_path" {
   type        = string
-  description = "Ruta local del archivo de intro/outro a subir a S3 (obligatorio)."
+  description = "Ruta local del archivo de intro/outro a subir a S3 (obligatorio). Por defecto apunta a ../worker/assets/inout.mp4 desde la carpeta infra."
+  default     = "../worker/assets/inout.mp4"
   validation {
     condition     = length(var.assets_inout_path) > 0
     error_message = "Debe proporcionar assets_inout_path (ruta local del archivo de intro/outro)."
@@ -84,7 +85,8 @@ variable "assets_inout_path" {
 
 variable "assets_wm_path" {
   type        = string
-  description = "Ruta local del archivo de watermark a subir a S3 (obligatorio)."
+  description = "Ruta local del archivo de watermark a subir a S3 (obligatorio). Por defecto apunta a ../worker/assets/watermark.png desde la carpeta infra."
+  default     = "../worker/assets/watermark.png"
   validation {
     condition     = length(var.assets_wm_path) > 0
     error_message = "Debe proporcionar assets_wm_path (ruta local del archivo de watermark)."
@@ -970,15 +972,15 @@ resource "aws_s3_bucket_public_access_block" "anb_videos" {
 resource "aws_s3_object" "asset_inout" {
   bucket = aws_s3_bucket.anb_videos.bucket
   key    = var.assets_inout_key
-  source = var.assets_inout_path
-  etag   = filemd5(var.assets_inout_path)
+  source = abspath("${path.module}/${var.assets_inout_path}")
+  etag   = filemd5(abspath("${path.module}/${var.assets_inout_path}"))
 }
 
 resource "aws_s3_object" "asset_wm" {
   bucket = aws_s3_bucket.anb_videos.bucket
   key    = var.assets_wm_key
-  source = var.assets_wm_path
-  etag   = filemd5(var.assets_wm_path)
+  source = abspath("${path.module}/${var.assets_wm_path}")
+  etag   = filemd5(abspath("${path.module}/${var.assets_wm_path}"))
 }
 
 # ========== Application Load Balancer ==========
