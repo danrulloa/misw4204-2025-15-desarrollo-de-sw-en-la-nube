@@ -411,6 +411,17 @@ resource "aws_security_group_rule" "rds_ingress_from_worker" {
   description              = "Worker to RDS"
 }
 
+# Permitir acceso directo desde la IP administradora (solo 5432)
+resource "aws_security_group_rule" "rds_ingress_from_admin" {
+  type              = "ingress"
+  security_group_id = aws_security_group.rds.id
+  from_port         = 5432
+  to_port           = 5432
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+  description       = "Admin IP to RDS"
+}
+
 # Reglas de egress para RDS (acceso a internet)
 resource "aws_security_group_rule" "rds_egress_all" {
   type              = "egress"
@@ -711,7 +722,7 @@ resource "aws_instance" "db" {
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = "",
     rds_auth_endpoint     = "",
-    rds_password          = "",
+    rds_password          = var.rds_password,
     s3_bucket             = "",
     assets_inout_key      = "",
     assets_wm_key         = "",
@@ -748,7 +759,7 @@ resource "aws_instance" "mq" {
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = "",
     rds_auth_endpoint     = "",
-    rds_password          = "",
+    rds_password          = var.rds_password,
     s3_bucket             = "",
     assets_inout_key      = "",
     assets_wm_key         = "",
@@ -824,7 +835,7 @@ resource "aws_instance" "worker" {
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = "",
-    rds_password          = "",
+    rds_password          = var.rds_password,
     s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
     assets_inout_key      = var.assets_inout_key,
     assets_wm_key         = var.assets_wm_key,
@@ -862,7 +873,7 @@ resource "aws_instance" "obs" {
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = "",
     rds_auth_endpoint     = "",
-    rds_password          = "",
+    rds_password          = var.rds_password,
     s3_bucket             = "",
     assets_inout_key      = "",
     assets_wm_key         = "",
@@ -895,6 +906,7 @@ resource "aws_db_instance" "core" {
 
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.anb_rds.name
+  publicly_accessible    = true
 
   backup_retention_period = 7
   backup_window           = "03:00-04:00"
@@ -922,6 +934,7 @@ resource "aws_db_instance" "auth" {
 
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.anb_rds.name
+  publicly_accessible    = true
 
   backup_retention_period = 7
   backup_window           = "03:00-04:00"

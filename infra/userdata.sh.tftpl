@@ -77,9 +77,11 @@ REFRESH_TOKEN_EXPIRE=600
 %{ if rds_core_endpoint != "" ~}
 DB_URL_CORE=postgresql+asyncpg://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:${rds_password}@${rds_auth_endpoint}:5432/anb_auth
+DATABASE_URL=postgresql://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
 %{ else ~}
 DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
+DATABASE_URL=postgresql://anb_user:anb_pass@${db_ip}:5432/anb_core
 %{ endif ~}
 
 # MQ
