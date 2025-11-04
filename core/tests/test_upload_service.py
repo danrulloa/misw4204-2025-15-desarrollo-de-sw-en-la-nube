@@ -83,6 +83,7 @@ def service(monkeypatch):
     monkeypatch.setattr(uploads_local.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})
     monkeypatch.setattr(uploads_local.settings, "MAX_UPLOAD_SIZE_MB", 100)
     monkeypatch.setattr(uploads_local.settings, "WORKER_INPUT_PREFIX", "/worker/in")
+    monkeypatch.setattr(uploads_local.settings, "STORAGE_BACKEND", "local")
     return LocalUploadService()
 
 
