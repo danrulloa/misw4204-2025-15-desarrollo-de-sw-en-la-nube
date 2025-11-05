@@ -272,3 +272,6 @@ docker-compose.override.yml
 .env
 infra/.terraform.lock.hcl
 infra/*.json
+K6/*.mp4
+worker/assets/*.mp4
+worker/assets/*.png
