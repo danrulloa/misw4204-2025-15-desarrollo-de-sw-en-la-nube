@@ -89,8 +89,10 @@ RABBITMQ_HOST=${mq_ip}
 # Tracing (OpenTelemetry): core/worker env for OTLP -> Tempo on OBS
 %{ if role == "core" ~}
 OTEL_SERVICE_NAME=anb-core
-%{ elif role == "worker" ~}
+%{ else ~}
+%{ if role == "worker" ~}
 OTEL_SERVICE_NAME=anb-worker
+%{ endif ~}
 %{ endif ~}
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://${obs_ip}:4318/v1/traces
 

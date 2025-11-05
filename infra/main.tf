@@ -1,10 +1,10 @@
 terraform {
   required_version = ">= 1.4.0"
   required_providers {
-    aws    = { source = "hashicorp/aws", version = "~> 5.0" }
-    local  = { source = "hashicorp/local", version = "~> 2.5" }
-    null   = { source = "hashicorp/null", version = "~> 3.2" }
-    random = { source = "hashicorp/random", version = "~> 3.6" }
+    aws      = { source = "hashicorp/aws", version = "~> 5.0" }
+    local    = { source = "hashicorp/local", version = "~> 2.5" }
+    null     = { source = "hashicorp/null", version = "~> 3.2" }
+    random   = { source = "hashicorp/random", version = "~> 3.6" }
     external = { source = "hashicorp/external", version = "~> 2.3" }
   }
 }
@@ -108,7 +108,7 @@ variable "assets_wm_key" {
 
 variable "aws_profile" {
   type    = string
-  default = "lab"
+  default = ""
 }
 
 # Tipos por rol (compatibles con el lab)
@@ -137,20 +137,20 @@ variable "instance_type_obs" {
 # Utilizar un perfir permite ser agnotico al sistema operativo utilizado para ejecutar terraform
 provider "aws" {
   region  = var.region
-  profile = var.aws_profile
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 # Detectar sistema operativo del host que ejecuta Terraform (Windows vs Unix)
 locals {
-  # path.module usa separador de ruta del SO; si contiene "\\" asumimos Windows
-  is_windows = can(regex("\\\\", path.module))
+  # Detectar Windows por presencia del PowerShell clásico
+  is_windows = fileexists("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
 }
 
 # Leer credenciales AWS desde variables de entorno del host (cross-platform)
 # - En Windows usa PowerShell clásico
 # - En macOS/Linux usa bash
 data "external" "aws_env_win" {
-  count   = local.is_windows ? 1 : 0
+  count = local.is_windows ? 1 : 0
   program = [
     "powershell.exe",
     "-NoProfile",
@@ -161,14 +161,11 @@ data "external" "aws_env_win" {
 }
 
 data "external" "aws_env_unix" {
-  count   = local.is_windows ? 0 : 1
+  count = local.is_windows ? 0 : 1
   program = [
     "bash",
     "-lc",
-    format(
-      "printf '{\"aws_access_key_id\":\"%s\",\"aws_secret_access_key\":\"%s\",\"aws_session_token\":\"%s\",\"aws_region\":\"%s\"}\\n' \"${AWS_ACCESS_KEY_ID:-}\" \"${AWS_SECRET_ACCESS_KEY:-}\" \"${AWS_SESSION_TOKEN:-}\" \"${AWS_REGION:-%s}\"",
-      var.region
-    )
+    "printf '{\"aws_access_key_id\":\"%s\",\"aws_secret_access_key\":\"%s\",\"aws_session_token\":\"%s\",\"aws_region\":\"%s\"}\\n' \"$${AWS_ACCESS_KEY_ID:-}\" \"$${AWS_SECRET_ACCESS_KEY:-}\" \"$${AWS_SESSION_TOKEN:-}\" \"$${AWS_REGION:-${var.region}}\""
   ]
 }
 
@@ -675,22 +672,22 @@ resource "aws_instance" "mq" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "mq",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = "",
-    worker_ip         = "",
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = "",
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-  s3_bucket         = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key  = "",
-    assets_wm_key     = "",
+    role                  = "mq",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = "",
+    worker_ip             = "",
+    obs_ip                = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = "",
+    rds_auth_endpoint     = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -713,22 +710,22 @@ resource "aws_instance" "core" {
   vpc_security_group_ids      = [aws_security_group.core.id]
   depends_on                  = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "core",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = "",
-    obs_ip            = "aws_instance.obs.private_ip",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = aws_db_instance.core.address,
-    rds_auth_endpoint = aws_db_instance.auth.address,
-    rds_password      = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key  = "",
-    assets_wm_key     = "",
+    role                  = "core",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = "",
+    obs_ip                = "aws_instance.obs.private_ip",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = aws_db_instance.auth.address,
+    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -751,22 +748,22 @@ resource "aws_instance" "worker" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "worker",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = "",
-    obs_ip            = "aws_instance.obs.private_ip",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = aws_db_instance.core.address,
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
-    assets_inout_key  = var.assets_inout_key,
-    assets_wm_key     = var.assets_wm_key,
+    role                  = "worker",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = "",
+    obs_ip                = "aws_instance.obs.private_ip",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    assets_inout_key      = var.assets_inout_key,
+    assets_wm_key         = var.assets_wm_key,
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -789,22 +786,22 @@ resource "aws_instance" "obs" {
   vpc_security_group_ids      = [aws_security_group.obs.id]
   # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "obs",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = aws_instance.core.private_ip,
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = aws_instance.worker.private_ip,
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = "",
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-  s3_bucket         = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key  = "",
-    assets_wm_key     = "",
+    role                  = "obs",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = aws_instance.core.private_ip,
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = aws_instance.worker.private_ip,
+    obs_ip                = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = "",
+    rds_auth_endpoint     = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -1354,9 +1351,12 @@ resource "null_resource" "alb_apply_transform_grafana" {
   provisioner "local-exec" {
     command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_grafana.arn} --actions file://${replace(path.module, "\\", "/")}/alb_actions_grafana.json --transforms file://${replace(path.module, "\\", "/")}/alb_transform_grafana.json"
     environment = {
-      AWS_REGION         = var.region
-      AWS_DEFAULT_REGION = var.region
-      AWS_PROFILE        = var.aws_profile
+      AWS_REGION            = var.region
+      AWS_DEFAULT_REGION    = var.region
+      AWS_PROFILE           = var.aws_profile
+      AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
+      AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
+      AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
     }
   }
 }
@@ -1372,9 +1372,12 @@ resource "null_resource" "alb_apply_transform_prom" {
   provisioner "local-exec" {
     command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_prom.arn} --transforms file://${replace(path.module, "\\", "/")}/alb_transform_prom.json"
     environment = {
-      AWS_REGION         = var.region
-      AWS_DEFAULT_REGION = var.region
-      AWS_PROFILE        = var.aws_profile
+      AWS_REGION            = var.region
+      AWS_DEFAULT_REGION    = var.region
+      AWS_PROFILE           = var.aws_profile
+      AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
+      AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
+      AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
     }
   }
 }
