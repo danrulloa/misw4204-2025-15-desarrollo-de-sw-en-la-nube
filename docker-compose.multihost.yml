@@ -227,6 +227,21 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
+  tempo:
+    profiles: ["obs"]
+    image: grafana/tempo:2.4.1
+    container_name: tempo
+    command: ["-config.expand-env=true", "-config.file=/etc/tempo/config.yml"]
+    environment: []
+    ports:
+      - "3200:3200"   # Tempo HTTP API for Grafana
+      - "4318:4318"   # OTLP HTTP for traces
+    volumes:
+      - ./observability/tempo/config.yml:/etc/tempo/config.yml:ro
+      - tempo_data:/var/tempo
+    restart: unless-stopped
+    networks: [ internal ]
+
   # Log shipper on WORKER host
   promtail-worker:
     profiles: ["worker","obs-agent"]
@@ -253,3 +268,4 @@ volumes:
   rabbitmq_data:
   grafana_data:
   loki_data:
+  tempo_data:

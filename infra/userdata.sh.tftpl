@@ -21,10 +21,13 @@ rds_core_endpoint="${rds_core_endpoint}"
 rds_auth_endpoint="${rds_auth_endpoint}"
 rds_password="${rds_password}"
 
-# S3 / Región y PERFIL (sin exponer credenciales)
+# S3 / Región, PERFIL y credenciales (si vienen del host que ejecuta Terraform)
 s3_bucket="${s3_bucket}"
 aws_region="${aws_region}"
 aws_profile="${aws_profile}"
+aws_access_key_id="${aws_access_key_id}"
+aws_secret_access_key="${aws_secret_access_key}"
+aws_session_token="${aws_session_token}"
 assets_inout_key="${assets_inout_key}"
 assets_wm_key="${assets_wm_key}"
 
@@ -58,7 +61,13 @@ if [ -z "$alb_dns" ]; then
 fi
 LOKI_URL_VALUE="http://$alb_dns/loki/api/v1/push"
 
-# ====== .env (sin credenciales AWS) ======
+# Requerir bucket S3 siempre (no hay almacenamiento local)
+if [ -z "$s3_bucket" ]; then
+  echo "ERROR: s3_bucket no está definido y el almacenamiento local ya no está soportado." >&2
+  exit 1
+fi
+
+# ====== .env (S3 obligatorio; incluye credenciales AWS si fueron provistas) ======
 cat > /opt/anb-cloud/.env <<EOF
 APP_ENV=production
 API_TAG=latest
@@ -77,6 +86,15 @@ RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
 RABBITMQ_HOST=${mq_ip}
 
 # Upstreams (WEB)
+# Tracing (OpenTelemetry): core/worker env for OTLP -> Tempo on OBS
+%{ if role == "core" ~}
+OTEL_SERVICE_NAME=anb-core
+%{ elif role == "worker" ~}
+OTEL_SERVICE_NAME=anb-worker
+%{ endif ~}
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://${obs_ip}:4318/v1/traces
+
+# WEB upstreams
 UPSTREAM_API=http://${core_ip}:8000
 UPSTREAM_AUTH=http://${core_ip}:8001
 
@@ -88,25 +106,20 @@ REFRESH_TOKEN_EXPIRE=600
 JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
 ALGORITHM=HS256
 
-# S3 (si se definió bucket usamos backend S3; si no, local)
+# S3 (obligatorio)
+# Credenciales AWS (opcionales)
+AWS_ACCESS_KEY_ID=${aws_access_key_id}
+AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+AWS_SESSION_TOKEN=${aws_session_token}
 AWS_PROFILE=${aws_profile}
 AWS_REGION=${aws_region}
 AWS_SDK_LOAD_CONFIG=1
-
-$(if [ -n "$s3_bucket" ]; then
-cat <<S3CONF
 STORAGE_BACKEND=s3
 S3_BUCKET=${s3_bucket}
 S3_REGION=${aws_region}
 S3_PREFIX=uploads
 S3_FORCE_PATH_STYLE=0
 S3_VERIFY_SSL=1
-
-     
-S3CONF
-else
-echo "STORAGE_BACKEND=local"
-fi)
 EOF
 
 # Solo exportamos LOKI_URL en runtime (los contenedores lo leen por env/compose)
@@ -143,13 +156,20 @@ if [ "$ROLE" = "web" ]; then
   sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
 fi
 
-# ====== Assets Worker desde S3 (sin credenciales, con perfil/rol) ======
+# ====== Assets Worker desde S3 (con credenciales explícitas o perfil/rol) ======
 if [ "$ROLE" = "worker" ] && [ -n "$s3_bucket" ]; then
   echo "Descargando assets del worker desde S3..."
   apt-get install -y awscli || true
 
-  # Preferir perfil si viene; si no, usar rol de instancia (IMDS)
-  if [ -n "$aws_profile" ]; then
+  # Preferir credenciales explícitas si vienen; si no, usar perfil; si no, rol de instancia (IMDS)
+  if [ -n "$aws_access_key_id" ]; then
+    export AWS_ACCESS_KEY_ID="$aws_access_key_id"
+    export AWS_SECRET_ACCESS_KEY="$aws_secret_access_key"
+    if [ -n "$aws_session_token" ]; then
+      export AWS_SESSION_TOKEN="$aws_session_token"
+    fi
+    unset AWS_PROFILE || true
+  elif [ -n "$aws_profile" ]; then
     export AWS_PROFILE="$aws_profile"
   fi
   export AWS_DEFAULT_REGION="${aws_region}"

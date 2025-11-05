@@ -6,6 +6,7 @@ import os
 import time
 
 from kombu import Exchange, Queue
+from app.observability.tracing import setup_tracing
 
 # Prometheus metrics (export to /metrics via start_http_server)
 try:
@@ -16,6 +17,13 @@ except Exception:
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry tracing (no-op if no OTLP endpoint is configured)
+try:
+    setup_tracing(service_name="anb-worker")
+except Exception:
+    # Never block worker startup due to tracing setup issues
+    logger.warning("OpenTelemetry tracing setup failed; continuing without tracing", exc_info=True)
 
 
 # Subclass Celery to hold shared constants (avoids duplicating literals like 'video.dlq')

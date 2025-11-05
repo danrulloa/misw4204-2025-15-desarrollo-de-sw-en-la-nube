@@ -5,6 +5,7 @@ terraform {
     local  = { source = "hashicorp/local", version = "~> 2.5" }
     null   = { source = "hashicorp/null", version = "~> 3.2" }
     random = { source = "hashicorp/random", version = "~> 3.6" }
+    external = { source = "hashicorp/external", version = "~> 2.3" }
   }
 }
 
@@ -137,6 +138,43 @@ variable "instance_type_obs" {
 provider "aws" {
   region  = var.region
   profile = var.aws_profile
+}
+
+# Detectar sistema operativo del host que ejecuta Terraform (Windows vs Unix)
+locals {
+  # path.module usa separador de ruta del SO; si contiene "\\" asumimos Windows
+  is_windows = can(regex("\\\\", path.module))
+}
+
+# Leer credenciales AWS desde variables de entorno del host (cross-platform)
+# - En Windows usa PowerShell clásico
+# - En macOS/Linux usa bash
+data "external" "aws_env_win" {
+  count   = local.is_windows ? 1 : 0
+  program = [
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "Write-Output ((@{ aws_access_key_id = $Env:AWS_ACCESS_KEY_ID; aws_secret_access_key = $Env:AWS_SECRET_ACCESS_KEY; aws_session_token = $Env:AWS_SESSION_TOKEN; aws_region = $Env:AWS_REGION } | ConvertTo-Json -Compress))"
+  ]
+}
+
+data "external" "aws_env_unix" {
+  count   = local.is_windows ? 0 : 1
+  program = [
+    "bash",
+    "-lc",
+    format(
+      "printf '{\"aws_access_key_id\":\"%s\",\"aws_secret_access_key\":\"%s\",\"aws_session_token\":\"%s\",\"aws_region\":\"%s\"}\\n' \"${AWS_ACCESS_KEY_ID:-}\" \"${AWS_SECRET_ACCESS_KEY:-}\" \"${AWS_SESSION_TOKEN:-}\" \"${AWS_REGION:-%s}\"",
+      var.region
+    )
+  ]
+}
+
+locals {
+  # Unificar salida en un solo mapa accesible como local.aws_env
+  aws_env = local.is_windows ? data.external.aws_env_win[0].result : data.external.aws_env_unix[0].result
 }
 
 # ========== VPC/Subred por defecto ==========
@@ -521,6 +559,27 @@ resource "aws_security_group_rule" "obs_loki" {
   cidr_blocks       = [var.admin_cidr]
 }
 
+# Allow OTLP HTTP (4318) to Tempo from CORE and WORKER
+resource "aws_security_group_rule" "obs_otlp_from_core" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.obs.id
+  from_port                = 4318
+  to_port                  = 4318
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.core.id
+  description              = "Allow OTLP HTTP traces from CORE"
+}
+
+resource "aws_security_group_rule" "obs_otlp_from_worker" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.obs.id
+  from_port                = 4318
+  to_port                  = 4318
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.worker.id
+  description              = "Allow OTLP HTTP traces from WORKER"
+}
+
 # Reglas de egress para OBS (acceso a internet)
 resource "aws_security_group_rule" "obs_egress_all" {
   type              = "egress"
@@ -629,11 +688,14 @@ resource "aws_instance" "mq" {
     rds_core_endpoint = "",
     rds_auth_endpoint = "",
     rds_password      = var.rds_password,
-    s3_bucket         = "",
+  s3_bucket         = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key  = "",
     assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
   })
   tags = merge(local.tags_base, { Name = "anb-mq" })
   root_block_device {
@@ -659,7 +721,7 @@ resource "aws_instance" "core" {
     core_ip           = "",
     mq_ip             = aws_instance.mq.private_ip,
     worker_ip         = "",
-    obs_ip            = "",
+    obs_ip            = "aws_instance.obs.private_ip",
     alb_dns           = aws_lb.public.dns_name,
     rds_core_endpoint = aws_db_instance.core.address,
     rds_auth_endpoint = aws_db_instance.auth.address,
@@ -667,8 +729,11 @@ resource "aws_instance" "core" {
     s3_bucket         = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key  = "",
     assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
@@ -694,7 +759,7 @@ resource "aws_instance" "worker" {
     core_ip           = "",
     mq_ip             = aws_instance.mq.private_ip,
     worker_ip         = "",
-    obs_ip            = "",
+    obs_ip            = "aws_instance.obs.private_ip",
     alb_dns           = aws_lb.public.dns_name,
     rds_core_endpoint = aws_db_instance.core.address,
     rds_auth_endpoint = "",
@@ -702,8 +767,11 @@ resource "aws_instance" "worker" {
     s3_bucket         = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
     assets_inout_key  = var.assets_inout_key,
     assets_wm_key     = var.assets_wm_key,
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {
@@ -734,11 +802,14 @@ resource "aws_instance" "obs" {
     rds_core_endpoint = "",
     rds_auth_endpoint = "",
     rds_password      = var.rds_password,
-    s3_bucket         = "",
+  s3_bucket         = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key  = "",
     assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
   })
   tags = merge(local.tags_base, { Name = "anb-obs" })
   root_block_device {

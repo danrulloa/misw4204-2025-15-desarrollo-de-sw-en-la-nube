@@ -15,6 +15,7 @@ from app.exceptions import (
     validation_exception_handler,
     general_exception_handler,
 )
+from app.observability.tracing import setup_tracing
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +55,9 @@ app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
+
+# Enable OpenTelemetry tracing
+setup_tracing(app)
 
 from app.api import videos, public, auth
 app.include_router(videos.router)
