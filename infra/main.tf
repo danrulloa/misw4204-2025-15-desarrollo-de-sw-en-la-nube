@@ -753,7 +753,7 @@ resource "aws_db_instance" "core" {
   engine     = "postgres"
   # engine_version omitido - AWS usará la versión predeterminada disponible para postgres
   instance_class        = var.rds_instance_class
-  allocated_storage     = 20
+  allocated_storage     = 5
   max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
@@ -781,7 +781,7 @@ resource "aws_db_instance" "auth" {
   engine     = "postgres"
   # engine_version omitido - AWS usará la versión predeterminada disponible para postgres
   instance_class        = var.rds_instance_class
-  allocated_storage     = 20
+  allocated_storage     = 5
   max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true

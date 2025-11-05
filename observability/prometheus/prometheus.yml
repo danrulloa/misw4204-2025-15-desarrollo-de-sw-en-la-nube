@@ -20,19 +20,10 @@ scrape_configs:
     static_configs:
       - targets: ['__MQ_IP__:15692']
 
-  - job_name: postgres_auth
-    static_configs:
-      - targets: ['__DB_IP__:9187']
-
-  - job_name: postgres_core
-    static_configs:
-      - targets: ['__DB_IP__:9188']
-
   - job_name: cadvisor
     static_configs:
       - targets:
         - "__CORE_IP__:8080"
-        - "__DB_IP__:8080"
         - "__MQ_IP__:8080"
         - "__WORKER_IP__:8080"
 
