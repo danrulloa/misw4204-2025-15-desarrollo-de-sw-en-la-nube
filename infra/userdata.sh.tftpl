@@ -33,7 +33,7 @@ assets_wm_key="${assets_wm_key}"
 
 # ====== Paquetes base + Docker ======
 apt-get update -y
-apt-get install -y ca-certificates curl gnupg lsb-release git
+apt-get install -y ca-certificates curl gnupg lsb-release git awscli
 install -m 0755 -d /etc/apt/keyrings || true
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
@@ -50,7 +50,7 @@ cd /opt/anb-cloud
 if [ ! -d .git ]; then
   git clone "$REPO_URL" /opt/anb-cloud
 fi
-git fetch --all
+git fetch --all || true
 git checkout "$repo_branch"
 git reset --hard "origin/${repo_branch}"
 
@@ -65,6 +65,38 @@ LOKI_URL_VALUE="http://$alb_dns/loki/api/v1/push"
 if [ -z "$s3_bucket" ]; then
   echo "ERROR: s3_bucket no está definido y el almacenamiento local ya no está soportado." >&2
   exit 1
+fi
+
+# ====== Resolver OBS IP en CORE/WORKER si no viene (via AWS CLI) ======
+if [ "$ROLE" = "core" ] || [ "$ROLE" = "worker" ]; then
+  if [ -z "$obs_ip" ] || [ "$obs_ip" = "aws_instance.obs.private_ip" ]; then
+    echo "[anb] Resolviendo OBS IP vía AWS CLI..."
+    # Preparar credenciales para AWS CLI
+    if [ -n "$aws_access_key_id" ]; then
+      export AWS_ACCESS_KEY_ID="$aws_access_key_id"
+      export AWS_SECRET_ACCESS_KEY="$aws_secret_access_key"
+      if [ -n "$aws_session_token" ]; then
+        export AWS_SESSION_TOKEN="$aws_session_token"
+      fi
+      unset AWS_PROFILE || true
+    elif [ -n "$aws_profile" ]; then
+      export AWS_PROFILE="$aws_profile"
+    fi
+    export AWS_DEFAULT_REGION="${aws_region}"
+
+    # Buscar instancia OBS por tag Name=anb-obs en estado running
+    OBS_IP_RESOLVED="$(aws ec2 describe-instances \
+      --filters "Name=tag:Name,Values=anb-obs" "Name=instance-state-name,Values=running" \
+      --query "Reservations[0].Instances[0].PrivateIpAddress" \
+      --output text 2>/dev/null || true)"
+
+    if [ -n "$OBS_IP_RESOLVED" ] && [ "$OBS_IP_RESOLVED" != "None" ]; then
+      echo "[anb] OBS IP resuelta: $OBS_IP_RESOLVED"
+      obs_ip="$OBS_IP_RESOLVED"
+    else
+      echo "[anb][WARN] No se pudo resolver OBS IP; OTLP usará valor vacío y no enviará trazas."
+    fi
+  fi
 fi
 
 # ====== .env (S3 obligatorio; incluye credenciales AWS si fueron provistas) ======
@@ -113,7 +145,9 @@ ALGORITHM=HS256
 AWS_ACCESS_KEY_ID=${aws_access_key_id}
 AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
 AWS_SESSION_TOKEN=${aws_session_token}
+%{ if aws_profile != "" ~}
 AWS_PROFILE=${aws_profile}
+%{ endif ~}
 AWS_REGION=${aws_region}
 AWS_SDK_LOAD_CONFIG=1
 STORAGE_BACKEND=s3
