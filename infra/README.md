@@ -170,6 +170,7 @@ export AWS_ACCESS_KEY_ID="ASIA..."
 export AWS_SECRET_ACCESS_KEY="..."
 export AWS_SESSION_TOKEN="..."
 export AWS_REGION="us-east-1"
+export AWS_PROFILE=lab
 ```
 
 En **PowerShell** (Windows):
@@ -179,6 +180,7 @@ $env:AWS_ACCESS_KEY_ID="ASIA..."
 $env:AWS_SECRET_ACCESS_KEY="..."
 $env:AWS_SESSION_TOKEN="..."
 $env:AWS_REGION="us-east-1"
+$env:AWS_PROFILE="lab"
 ```
 
 > Con esta opción, en `infra/terraform.tfvars` puedes omitir `aws_profile` o dejarlo vacío. Asegúrate de que las variables estén activas en la misma sesión donde ejecutes `terraform`.
@@ -384,6 +386,10 @@ repo_branch = "develop"
 > - Si cambias de red (WiFi diferente, VPN), actualiza `admin_cidr` con tu nueva IP
 > - Si cambias de rama del repositorio, actualiza `repo_branch`
 
+---
+```bash
+  aws sts get-caller-identity --profile lab
+  ```
 ---
 
 ## 5) Terraform (carpeta `infra/`)

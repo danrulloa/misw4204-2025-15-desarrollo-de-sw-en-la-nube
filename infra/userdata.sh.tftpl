@@ -89,6 +89,10 @@ JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
 ALGORITHM=HS256
 
 # S3 (si se definió bucket usamos backend S3; si no, local)
+AWS_PROFILE=${aws_profile}
+AWS_REGION=${aws_region}
+AWS_SDK_LOAD_CONFIG=1
+
 $(if [ -n "$s3_bucket" ]; then
 cat <<S3CONF
 STORAGE_BACKEND=s3
@@ -97,6 +101,8 @@ S3_REGION=${aws_region}
 S3_PREFIX=uploads
 S3_FORCE_PATH_STYLE=0
 S3_VERIFY_SSL=1
+
+     
 S3CONF
 else
 echo "STORAGE_BACKEND=local"
