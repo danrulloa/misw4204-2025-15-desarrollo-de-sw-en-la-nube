@@ -271,3 +271,4 @@ docker-compose.override.yml
 .vscode/
 .env
 infra/.terraform.lock.hcl
+infra/*.json

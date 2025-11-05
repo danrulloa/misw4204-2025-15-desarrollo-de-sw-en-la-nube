@@ -116,18 +116,52 @@ El script de user-data ahora:
    - `aws_secret_access_key`
    - `aws_session_token`
 
-### 2.2 Configurar credenciales
+### 2.2 Configurar credenciales (preferencia: **perfil `lab`**)
 
-**Opción A: Script PowerShell (Windows - Recomendado)**
+**Opción A — Perfil AWS CLI `lab` (Recomendado, Linux/macOS/Windows)**  
+Crea y usa un perfil llamado `lab` con las credenciales **temporales** de AWS Academy (incluye el `aws_session_token`):
 
-Usa el script helper `setup-aws-env.ps1`:
+```bash
+aws configure --profile lab
+# Pega: AWS Access Key ID, AWS Secret Access Key, AWS Session Token
+```
+
+Archivos resultantes:
+
+```ini
+# ~/.aws/credentials
+[lab]
+aws_access_key_id = ASIA...
+aws_secret_access_key = ...
+aws_session_token = ...
+
+# ~/.aws/config
+[profile lab]
+region = us-east-1
+output = json
+```
+
+> Terraform usará este perfil via `aws_profile = "lab"` en `terraform.tfvars`.  
+> Con AWS CLI puedes:  
+> - fijar el perfil para toda la sesión: `export AWS_PROFILE=lab` (PowerShell: `$env:AWS_PROFILE='lab'`)  
+> - o pasar `--profile lab` en cada comando.
+
+---
+
+**Opción B — Script PowerShell para perfil `lab` (Windows)**  
+Si prefieres automatizar en Windows, usa el helper para crear/actualizar el perfil `lab`:
 
 ```powershell
 cd infra
 .\setup-aws-env.ps1
 ```
 
-**Opción B: Manual (bash/PowerShell)**
+> El script te pedirá Access Key, Secret y Session Token y escribirá en `~\.aws\credentials` y `~\.aws\config` bajo el perfil `lab`.
+
+---
+
+**Opción C — Variables de entorno (Alternativa)**  
+Si no quieres perfiles, exporta variables **(debes incluir el token de sesión)**.
 
 En **bash** (Linux/macOS):
 
@@ -147,8 +181,19 @@ $env:AWS_SESSION_TOKEN="..."
 $env:AWS_REGION="us-east-1"
 ```
 
-#### 2.2.1 Cómo usa Terraform estas variables ahora
-No necesitas definir variables TF_VAR_*. Terraform leerá directamente estas variables de entorno (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN y AWS_REGION) y las inyectará a las instancias vía user-data.
+> Con esta opción, en `infra/terraform.tfvars` puedes omitir `aws_profile` o dejarlo vacío. Asegúrate de que las variables estén activas en la misma sesión donde ejecutes `terraform`.
+
+---
+
+**Verificación rápida**
+
+```bash
+# Con perfil
+aws sts get-caller-identity --profile lab
+
+# O con variables/entorno
+aws sts get-caller-identity
+```
 
 ### 2.3 Verificar credenciales
 
@@ -322,7 +367,8 @@ rds_instance_class = "db.t3.micro"
 ```hcl
 region = "us-east-1"
 key_name = "vockey"
-admin_cidr = "186.81.58.137/32"
+admin_cidr    = "X.Y.Z.W/32"
+aws_profile   = "lab"
 
 # RDS Password - Cambiar esto por tu contraseña segura
 rds_password = "!QAZxsw2#EDC"
