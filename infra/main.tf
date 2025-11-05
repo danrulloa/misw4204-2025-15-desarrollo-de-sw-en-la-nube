@@ -1350,14 +1350,18 @@ resource "null_resource" "alb_apply_transform_grafana" {
 
   provisioner "local-exec" {
     command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_grafana.arn} --actions file://${replace(path.module, "\\", "/")}/alb_actions_grafana.json --transforms file://${replace(path.module, "\\", "/")}/alb_transform_grafana.json"
-    environment = {
-      AWS_REGION            = var.region
-      AWS_DEFAULT_REGION    = var.region
-      AWS_PROFILE           = var.aws_profile
-      AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
-      AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
-      AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
-    }
+    environment = merge(
+      {
+        AWS_REGION         = var.region
+        AWS_DEFAULT_REGION = var.region
+      },
+      var.aws_profile != "" ? { AWS_PROFILE = var.aws_profile } : {},
+      {
+        AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
+        AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
+        AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
+      }
+    )
   }
 }
 
@@ -1371,14 +1375,18 @@ resource "null_resource" "alb_apply_transform_prom" {
 
   provisioner "local-exec" {
     command = "aws elbv2 modify-rule --region ${var.region} --rule-arn ${aws_lb_listener_rule.r_prom.arn} --transforms file://${replace(path.module, "\\", "/")}/alb_transform_prom.json"
-    environment = {
-      AWS_REGION            = var.region
-      AWS_DEFAULT_REGION    = var.region
-      AWS_PROFILE           = var.aws_profile
-      AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
-      AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
-      AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
-    }
+    environment = merge(
+      {
+        AWS_REGION         = var.region
+        AWS_DEFAULT_REGION = var.region
+      },
+      var.aws_profile != "" ? { AWS_PROFILE = var.aws_profile } : {},
+      {
+        AWS_ACCESS_KEY_ID     = try(local.aws_env.aws_access_key_id, "")
+        AWS_SECRET_ACCESS_KEY = try(local.aws_env.aws_secret_access_key, "")
+        AWS_SESSION_TOKEN     = try(local.aws_env.aws_session_token, "")
+      }
+    )
   }
 }
 
