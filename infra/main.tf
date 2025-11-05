@@ -110,6 +110,25 @@ variable "aws_profile" {
   default = "lab"
 }
 
+variable "aws_access_key_id" {
+  type        = string
+  sensitive   = true
+  description = "Access Key ID para S3 (SOLO si no usas IAM Role)"
+}
+
+variable "aws_secret_access_key" {
+  type        = string
+  sensitive   = true
+  description = "Secret Access Key para S3 (SOLO si no usas IAM Role)"
+}
+
+variable "aws_session_token" {
+  type        = string
+  sensitive   = true
+  default     = ""        # opcional (solo si usas STS)
+  description = "Session token STS (opcional)"
+}
+
 # Tipos por rol (compatibles con el lab)
 variable "instance_type_web" {
   type    = string
@@ -616,24 +635,28 @@ resource "aws_instance" "mq" {
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.mq.id]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "mq",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = "",
-    worker_ip         = "",
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = "",
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-    s3_bucket         = "",
-    assets_inout_key  = "",
-    assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    role                  = "mq",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = "",
+    worker_ip             = "",
+    obs_ip                = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = "",
+    rds_auth_endpoint     = "",
+    aws_access_key_id     = var.aws_access_key_id,
+    aws_secret_access_key = var.aws_access_key_id,
+    aws_session_token     = var.aws_session_token,
+    obs_ip_runtime        = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = "",
+    assets_inout_key      = "",
+    assets_wm_key         = "",
+    aws_region            = var.region,
+    aws_profile           = var.aws_profile
   })
   tags = merge(local.tags_base, { Name = "anb-mq" })
   root_block_device {
@@ -651,24 +674,28 @@ resource "aws_instance" "core" {
   vpc_security_group_ids      = [aws_security_group.core.id]
   depends_on                  = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "core",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = "",
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = aws_db_instance.core.address,
-    rds_auth_endpoint = aws_db_instance.auth.address,
-    rds_password      = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key  = "",
-    assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    role                  = "core",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = "",
+    obs_ip                = "",
+    aws_access_key_id     = var.aws_access_key_id,
+    aws_secret_access_key = var.aws_access_key_id,
+    aws_session_token     = var.aws_session_token,
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = aws_db_instance.auth.address,
+    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
+    obs_ip_runtime        = "",
+    aws_region            = var.region,
+    aws_profile           = var.aws_profile
   })
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
@@ -686,24 +713,28 @@ resource "aws_instance" "worker" {
   vpc_security_group_ids      = [aws_security_group.worker.id]
   depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "worker",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = "",
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = "",
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = aws_db_instance.core.address,
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-    s3_bucket         = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
-    assets_inout_key  = var.assets_inout_key,
-    assets_wm_key     = var.assets_wm_key,
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    role                  = "worker",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = "",
+    obs_ip                = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = "",
+    aws_access_key_id     = var.aws_access_key_id,
+    aws_secret_access_key = var.aws_access_key_id,
+    aws_session_token     = var.aws_session_token,
+    obs_ip_runtime        = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    assets_inout_key      = var.assets_inout_key,
+    assets_wm_key         = var.assets_wm_key,
+    aws_region            = var.region,
+    aws_profile           = var.aws_profile
   })
   tags = merge(local.tags_base, { Name = "anb-worker" })
   root_block_device {
@@ -721,24 +752,28 @@ resource "aws_instance" "obs" {
   vpc_security_group_ids      = [aws_security_group.obs.id]
   # Obs SIN dependencias para evitar ciclos. Prometheus se ajusta luego si hace falta.
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role              = "obs",
-    repo_url          = var.repo_url,
-    repo_branch       = var.repo_branch,
-    compose_file      = var.compose_file,
-    web_ip            = "",
-    core_ip           = aws_instance.core.private_ip,
-    mq_ip             = aws_instance.mq.private_ip,
-    worker_ip         = aws_instance.worker.private_ip,
-    obs_ip            = "",
-    alb_dns           = aws_lb.public.dns_name,
-    rds_core_endpoint = "",
-    rds_auth_endpoint = "",
-    rds_password      = var.rds_password,
-    s3_bucket         = "",
-    assets_inout_key  = "",
-    assets_wm_key     = "",
-    aws_region        = var.region,
-    aws_profile       = var.aws_profile
+    role                  = "obs",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = aws_instance.core.private_ip,
+    mq_ip                 = aws_instance.mq.private_ip,
+    worker_ip             = aws_instance.worker.private_ip,
+    obs_ip                = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = "",
+    rds_auth_endpoint     = "",
+    rds_password          = var.rds_password,
+    s3_bucket             = "",
+    assets_inout_key      = "",
+    assets_wm_key         = "",
+    aws_access_key_id     = var.aws_access_key_id,
+    aws_secret_access_key = var.aws_access_key_id,
+    aws_session_token     = var.aws_session_token,
+    obs_ip_runtime        = "",
+    aws_region            = var.region,
+    aws_profile           = var.aws_profile
   })
   tags = merge(local.tags_base, { Name = "anb-obs" })
   root_block_device {

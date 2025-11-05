@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
-# Log a archivo y consola
+
+# ====== Log a archivo y consola ======
 exec > >(tee -a /var/log/anb-bootstrap.log) 2>&1
 
 # ====== Variables del template (Terraform) ======
 ROLE="${role}"
 REPO_URL="${repo_url}"
-repo_branch="${repo_branch}"
+REPO_BRANCH="${repo_branch}"
 COMPOSE_FILE="${compose_file}"
 
 core_ip="${core_ip}"
@@ -21,21 +22,30 @@ rds_core_endpoint="${rds_core_endpoint}"
 rds_auth_endpoint="${rds_auth_endpoint}"
 rds_password="${rds_password}"
 
-# S3 / Región y PERFIL (sin exponer credenciales)
+# S3 / Región / Perfil (sin exponer credenciales)
 s3_bucket="${s3_bucket}"
 aws_region="${aws_region}"
 aws_profile="${aws_profile}"
 assets_inout_key="${assets_inout_key}"
 assets_wm_key="${assets_wm_key}"
 
+# (Opcionales: solo si decides pasarlas por Terraform)
+aws_access_key_id="${aws_access_key_id}"
+aws_secret_access_key="${aws_secret_access_key}"
+aws_session_token="${aws_session_token}"
+
 # ====== Paquetes base + Docker ======
 apt-get update -y
 apt-get install -y ca-certificates curl gnupg lsb-release git
+
 install -m 0755 -d /etc/apt/keyrings || true
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
 https://download.docker.com/linux/ubuntu $(. /etc/os-release; echo "$VERSION_CODENAME") stable" \
-> /etc/apt/sources.list.d/docker.list
+  > /etc/apt/sources.list.d/docker.list
+
 apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
@@ -44,11 +54,12 @@ usermod -aG docker ubuntu || true
 # ====== Código fuente ======
 mkdir -p /opt/anb-cloud
 cd /opt/anb-cloud
+
 if [ ! -d .git ]; then
   git clone "$REPO_URL" /opt/anb-cloud
 fi
 git fetch --all
-git checkout "$repo_branch"
+git checkout "${repo_branch}"
 git reset --hard "origin/${repo_branch}"
 
 # ====== Validaciones mínimas ======
@@ -76,76 +87,79 @@ RABBITMQ_VHOST=/
 RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
 RABBITMQ_HOST=${mq_ip}
 
-# Upstreams (WEB)
+# Upstreams (WEB/Nginx)
 UPSTREAM_API=http://${core_ip}:8000
 UPSTREAM_AUTH=http://${core_ip}:8001
 
-# JWT
+# JWT (demo)
 ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
 REFRESH_TOKEN_SECRET_KEY=mi_clave_de_refresh_secreta
 TOKEN_EXPIRE=600
 REFRESH_TOKEN_EXPIRE=600
 JWT_SECRET=mi_secreto_super_seguro_para_jwt_tokens_2024
 ALGORITHM=HS256
-
-# S3 (si se definió bucket usamos backend S3; si no, local)
-AWS_PROFILE=${aws_profile}
-AWS_REGION=${aws_region}
-AWS_SDK_LOAD_CONFIG=1
-
-$(if [ -n "$s3_bucket" ]; then
-cat <<S3CONF
-STORAGE_BACKEND=s3
-S3_BUCKET=${s3_bucket}
-S3_REGION=${aws_region}
-S3_PREFIX=uploads
-S3_FORCE_PATH_STYLE=0
-S3_VERIFY_SSL=1
-
-     
-S3CONF
-else
-echo "STORAGE_BACKEND=local"
-fi)
 EOF
 
-# Solo exportamos LOKI_URL en runtime (los contenedores lo leen por env/compose)
-export LOKI_URL="$LOKI_URL_VALUE"
+# ====== S3: credenciales opcionales (o stub) ======
+install -d -m 0755 /etc/anb
+{
+  umask 077
+  if [ -n "${aws_access_key_id}" ] && [ -n "${aws_secret_access_key}" ]; then
+    cat > /etc/anb/s3.env <<EOF_S3
+S3_REGION=${aws_region}
+S3_BUCKET=${s3_bucket}
+AWS_DEFAULT_REGION=${aws_region}
+AWS_ACCESS_KEY_ID=${aws_access_key_id}
+AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+AWS_SESSION_TOKEN=${aws_session_token}
+EOF_S3
+  else
+    : > /etc/anb/s3.env
+  fi
+  chmod 600 /etc/anb/s3.env
+} >/dev/null 2>&1
+
+# Exponer Loki a contenedores por env (no en .env global)
+export LOKI_URL=LOKI_URL_VALUE
 
 # ====== Prometheus (solo OBS) ======
 if [ "$ROLE" = "obs" ]; then
+  # URL externa de Prometheus por detrás del ALB (si aplica)
   if [ -n "$alb_dns" ]; then
     echo "PROMETHEUS_EXTERNAL_URL=http://$alb_dns/prometheus" >> /opt/anb-cloud/.env
   fi
 
+  # Reemplazos de IPs en prometheus.yml
   if [ -n "${web_ip}" ]; then
     sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  else
+    sed -i '/__WEB_IP__/d' /opt/anb-cloud/observability/prometheus/prometheus.yml || true
   fi
-  sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__CORE_IP__/${core_ip}/g"     /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__MQ_IP__/${mq_ip}/g"         /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
 
+  # Resolver IP runtime para OBS si no se pasó por Terraform
   if [ -z "${obs_ip}" ]; then
     obs_ip_runtime="$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4 || true)"
   else
     obs_ip_runtime="${obs_ip}"
   fi
   if [ -n "$obs_ip_runtime" ]; then
-    sed -i "s/__OBS_IP__/$${obs_ip_runtime}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+    sed -i "s/__OBS_IP__/${obs_ip_runtime}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   fi
-  sed -i '/__WEB_IP__/d' /opt/anb-cloud/observability/prometheus/prometheus.yml || true
 fi
 
 # ====== Nginx (solo WEB) ======
 if [ "$ROLE" = "web" ]; then
   sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/nginx/nginx.conf
-  sed -i "s/__MQ_IP__/${mq_ip}/g"   /opt/anb-cloud/nginx/nginx.conf
-  sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
+  sed -i "s/__MQ_IP__/${mq_ip}/g"     /opt/anb-cloud/nginx/nginx.conf
+  sed -i "s/__OBS_IP__/${obs_ip}/g"   /opt/anb-cloud/nginx/nginx.conf
 fi
 
-# ====== Assets Worker desde S3 (sin credenciales, con perfil/rol) ======
+# ====== Assets Worker desde S3 (solo ROLE=worker y si hay bucket) ======
 if [ "$ROLE" = "worker" ] && [ -n "$s3_bucket" ]; then
-  echo "Descargando assets del worker desde S3..."
+  echo "[anb] Descargando assets del worker desde S3..."
   apt-get install -y awscli || true
 
   # Preferir perfil si viene; si no, usar rol de instancia (IMDS)
@@ -155,8 +169,8 @@ if [ "$ROLE" = "worker" ] && [ -n "$s3_bucket" ]; then
   export AWS_DEFAULT_REGION="${aws_region}"
 
   mkdir -p /opt/anb-cloud/worker/assets
-  aws s3 cp "s3://${s3_bucket}/${assets_inout_key}" /opt/anb-cloud/worker/assets/inout.mp4
-  aws s3 cp "s3://${s3_bucket}/${assets_wm_key}"    /opt/anb-cloud/worker/assets/watermark.png
+  aws s3 cp "s3://${s3_bucket}/${assets_inout_key}" /opt/anb-cloud/worker/assets/inout.mp4 || true
+  aws s3 cp "s3://${s3_bucket}/${assets_wm_key}"    /opt/anb-cloud/worker/assets/watermark.png || true
   ls -lh /opt/anb-cloud/worker/assets || true
 fi
 
@@ -182,6 +196,7 @@ case "$ROLE" in
   mq)     docker compose -f "$COMPOSE_PATH" --profile mq     up -d ;;
   worker) docker compose -f "$COMPOSE_PATH" --profile worker up -d ;;
   obs)    docker compose -f "$COMPOSE_PATH" --profile obs    up -d ;;
+  *)      echo "[anb] ERROR: ROLE '${role}' no reconocido" >&2; exit 2 ;;
 esac
 
 docker compose -f "$COMPOSE_PATH" ps || true
