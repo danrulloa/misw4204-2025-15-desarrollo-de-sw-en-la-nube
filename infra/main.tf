@@ -114,10 +114,6 @@ variable "instance_type_core" {
   type    = string
   default = "t3.small"
 }
-variable "instance_type_db" {
-  type    = string
-  default = "t3.small"
-}
 variable "instance_type_mq" {
   type    = string
   default = "t3.small"
@@ -296,89 +292,11 @@ resource "aws_security_group_rule" "core_egress_udp" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-# DB: 5432 (core), 5433 (auth) desde CORE y 5432 desde WORKER
-resource "aws_security_group" "db" {
-  name        = "anb-db-sg"
-  description = "DB ingress from CORE & WORKER"
-  vpc_id      = data.aws_vpc.default.id
-  tags        = local.tags_base
-}
-
 resource "aws_security_group" "worker" {
   name        = "anb-worker-sg"
   description = "WORKER"
   vpc_id      = data.aws_vpc.default.id
   tags        = local.tags_base
-}
-
-resource "aws_security_group_rule" "db_from_core_5432" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.core.id
-}
-resource "aws_security_group_rule" "db_from_core_5433" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 5433
-  to_port                  = 5433
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.core.id
-}
-resource "aws_security_group_rule" "db_from_worker_5432" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.worker.id
-}
-
-# Allow Prometheus (OBS) to scrape DB exporters and cadvisor
-resource "aws_security_group_rule" "db_from_obs_9187" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 9187
-  to_port                  = 9187
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
-resource "aws_security_group_rule" "db_from_obs_9188" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 9188
-  to_port                  = 9188
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
-resource "aws_security_group_rule" "db_from_obs_8080" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
-
-# Reglas de egress para DB (acceso a internet)
-resource "aws_security_group_rule" "db_egress_all" {
-  type              = "egress"
-  security_group_id = aws_security_group.db.id
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-resource "aws_security_group_rule" "db_egress_udp" {
-  type              = "egress"
-  security_group_id = aws_security_group.db.id
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "udp"
-  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 # RDS: Security group para bases de datos RDS
@@ -637,15 +555,6 @@ resource "aws_security_group_rule" "core_ssh" {
   cidr_blocks       = [var.admin_cidr]
 }
 
-resource "aws_security_group_rule" "db_ssh" {
-  type              = "ingress"
-  security_group_id = aws_security_group.db.id
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = [var.admin_cidr]
-}
-
 resource "aws_security_group_rule" "mq_ssh" {
   type              = "ingress"
   security_group_id = aws_security_group.mq.id
@@ -695,48 +604,12 @@ resource "aws_security_group_rule" "obs_ssh" {
 
 # ========== EC2 por rol con user-data (templatefile) ==========
 # Orden sin ciclos:
-#   DB y MQ no dependen de nadie
-#   CORE depende de DB/MQ
+#   MQ no depende de nadie
+#   CORE depende de MQ
 #   WORKER depende de MQ
 #   WEB depende de CORE
 #   OBS no depende de otros (Prometheus se puede configurar luego)
 
-resource "aws_instance" "db" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_db
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.db.id]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role                  = "db",
-    repo_url              = var.repo_url,
-    repo_branch           = var.repo_branch,
-    compose_file          = var.compose_file,
-    web_ip                = "",
-    core_ip               = "",
-    db_ip                 = "",
-    mq_ip                 = "",
-    worker_ip             = "",
-    obs_ip                = "",
-    alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = "",
-    rds_auth_endpoint     = "",
-    rds_password          = var.rds_password,
-    s3_bucket             = "",
-    assets_inout_key      = "",
-    assets_wm_key         = "",
-    aws_access_key_id     = try(data.external.aws_env.result.aws_access_key_id, ""),
-    aws_secret_access_key = try(data.external.aws_env.result.aws_secret_access_key, ""),
-    aws_session_token     = try(data.external.aws_env.result.aws_session_token, ""),
-    aws_region            = try(data.external.aws_env.result.aws_region, var.region)
-  })
-  tags = merge(local.tags_base, { Name = "anb-db" })
-  root_block_device {
-    volume_size = 80
-    volume_type = "gp3"
-  }
-}
 
 resource "aws_instance" "mq" {
   ami                         = local.ami_id
@@ -752,7 +625,6 @@ resource "aws_instance" "mq" {
     compose_file          = var.compose_file,
     web_ip                = "",
     core_ip               = "",
-    db_ip                 = "",
     mq_ip                 = "",
     worker_ip             = "",
     obs_ip                = "",
@@ -782,7 +654,7 @@ resource "aws_instance" "core" {
   associate_public_ip_address = true
   key_name                    = var.key_name == "" ? null : var.key_name
   vpc_security_group_ids      = [aws_security_group.core.id]
-  depends_on                  = [aws_instance.db, aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
+  depends_on                  = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "core",
     repo_url              = var.repo_url,
@@ -790,7 +662,6 @@ resource "aws_instance" "core" {
     compose_file          = var.compose_file,
     web_ip                = "",
     core_ip               = "",
-    db_ip                 = "", # Ya no se usa (RDS en su lugar)
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
@@ -828,7 +699,6 @@ resource "aws_instance" "worker" {
     compose_file          = var.compose_file,
     web_ip                = "",
     core_ip               = "",
-    db_ip                 = "",
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
@@ -865,8 +735,7 @@ resource "aws_instance" "obs" {
     repo_branch           = var.repo_branch,
     compose_file          = var.compose_file,
     web_ip                = "",
-    core_ip               = aws_instance.core.private_ip,
-    db_ip                 = aws_instance.db.private_ip,
+  core_ip               = aws_instance.core.private_ip,
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = aws_instance.worker.private_ip,
     obs_ip                = "",
@@ -1452,7 +1321,6 @@ resource "null_resource" "alb_apply_transform_prom" {
 output "public_ips" {
   value = {
     core   = aws_instance.core.public_ip
-    db     = aws_instance.db.public_ip
     mq     = aws_instance.mq.public_ip
     worker = aws_instance.worker.public_ip
     obs    = aws_instance.obs.public_ip
@@ -1462,7 +1330,6 @@ output "public_ips" {
 output "private_ips" {
   value = {
     core   = aws_instance.core.private_ip
-    db     = aws_instance.db.private_ip
     mq     = aws_instance.mq.private_ip
     worker = aws_instance.worker.private_ip
     obs    = aws_instance.obs.private_ip

@@ -9,14 +9,13 @@ repo_branch="${repo_branch}"
 COMPOSE_FILE="${compose_file}"
 
 core_ip="${core_ip}"
-db_ip="${db_ip}"
 mq_ip="${mq_ip}"
 obs_ip="${obs_ip}"
 web_ip="${web_ip}"
 worker_ip="${worker_ip}"
 alb_dns="${alb_dns}"
 
-# RDS endpoints (vacíos si no se usan RDS)
+# RDS endpoints (obligatorios)
 rds_core_endpoint="${rds_core_endpoint}"
 rds_auth_endpoint="${rds_auth_endpoint}"
 rds_password="${rds_password}"
@@ -63,26 +62,14 @@ cat > /opt/anb-cloud/.env <<EOF
 APP_ENV=production
 API_TAG=latest
 
-# CORE & AUTH DBs
-POSTGRES_USER=anb_user
-POSTGRES_PASSWORD=anb_pass
-POSTGRES_CORE_DB=anb_core
-POSTGRES_AUTH_DB=anb_auth
-
 ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
 REFRESH_TOKEN_SECRET_KEY=mi_clave_de_refresh_secreta
 TOKEN_EXPIRE=600
 REFRESH_TOKEN_EXPIRE=600
-# RDS o PostgreSQL local según disponibilidad
-%{ if rds_core_endpoint != "" ~}
+# Conexión obligatoria a RDS (sin fallback local)
 DB_URL_CORE=postgresql+asyncpg://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
 DB_URL_AUTH=postgresql+asyncpg://anb_user:${rds_password}@${rds_auth_endpoint}:5432/anb_auth
 DATABASE_URL=postgresql://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
-%{ else ~}
-DB_URL_CORE=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5432/anb_core
-DB_URL_AUTH=postgresql+asyncpg://anb_user:anb_pass@${db_ip}:5433/anb_auth
-DATABASE_URL=postgresql://anb_user:anb_pass@${db_ip}:5432/anb_core
-%{ endif ~}
 
 # MQ
 RABBITMQ_DEFAULT_USER=rabbit
@@ -132,7 +119,6 @@ if [ "$ROLE" = "obs" ]; then
     sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   fi
   sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/__DB_IP__/${db_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   # Si no recibimos obs_ip desde Terraform, consultamos a IMDS la IP privada
@@ -195,7 +181,6 @@ echo "[anb] Usando compose: $COMPOSE_PATH"
 case "$ROLE" in
   web)    docker compose -f "$COMPOSE_PATH" --profile web    up -d ;;
   core)   docker compose -f "$COMPOSE_PATH" --profile core   up -d ;;
-  db)     docker compose -f "$COMPOSE_PATH" --profile db     up -d ;;
   mq)     docker compose -f "$COMPOSE_PATH" --profile mq     up -d ;;
   worker) docker compose -f "$COMPOSE_PATH" --profile worker up -d ;;
   obs)    docker compose -f "$COMPOSE_PATH" --profile obs    up -d ;;

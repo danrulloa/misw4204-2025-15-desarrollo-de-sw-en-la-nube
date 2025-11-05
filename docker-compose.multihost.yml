@@ -84,106 +84,6 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
-  # ================== DB ==================
-  anb-auth-db:
-    profiles: ["db"]
-    image: postgres:15-alpine
-    container_name: anb-auth-db
-    env_file: [ .env ]
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB_AUTH:-anb_auth}
-      - POSTGRES_USER=${POSTGRES_USER:-anb_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
-      - TZ=America/Bogota
-    ports:
-      - "5433:5432"       
-    volumes:
-      - postgres_auth_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB_AUTH:-anb_auth} -h 127.0.0.1 -p 5432" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-    networks: [ internal ]
-
-  anb-core-db:
-    profiles: ["db"]
-    image: postgres:15-alpine
-    container_name: anb-core-db
-    env_file: [ .env ]
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB_CORE:-anb_core}
-      - POSTGRES_USER=${POSTGRES_USER:-anb_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
-      - TZ=America/Bogota
-    ports:
-      - "5432:5432"            
-    volumes:
-      - postgres_core_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB_CORE:-anb_core} -h 127.0.0.1 -p 5432" ]
-      interval: 10s
-      timeout: 30s
-      retries: 10
-      start_period: 90s
-    restart: unless-stopped
-    networks: [ internal ]
-
-  pg-exporter-auth:
-    profiles: ["db","obs-agent-db"]
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: pg-exporter-auth
-    environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-auth-db:5432/${POSTGRES_DB_AUTH:-anb_auth}?sslmode=disable
-    ports:
-      - "9188:9187"
-    restart: unless-stopped
-    networks: [ internal ]
-
-  pg-exporter-core:
-    profiles: ["db","obs-agent-db"]
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: pg-exporter-core
-    environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-core-db:5432/${POSTGRES_DB_CORE:-anb_core}?sslmode=disable
-    ports:
-      - "9187:9187"
-    restart: unless-stopped
-    networks: [ internal ]
-
-  cadvisor-db:
-    profiles: ["db","obs-agent"]
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor-db
-    privileged: true
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    restart: unless-stopped
-    networks: [ internal ]
-
-  promtail-db:
-    profiles: ["db","obs-agent"]
-    image: grafana/promtail:2.9.4
-    container_name: promtail-db
-    command:
-      - -config.file=/etc/promtail/config.yml
-      - -config.expand-env=true
-    environment:
-      - LOKI_URL=${LOKI_URL}
-    volumes:
-      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
-      - /var/log:/var/log
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    restart: unless-stopped
-    networks: [ internal ]
-
   # ================== MQ ==================
   rabbitmq:
     profiles: ["mq"]
@@ -351,7 +251,5 @@ networks:
 
 volumes:
   rabbitmq_data:
-  postgres_auth_data:
-  postgres_core_data:
   grafana_data:
   loki_data:
