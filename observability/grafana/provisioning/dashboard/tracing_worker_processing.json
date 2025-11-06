@@ -19,7 +19,7 @@
         {
           "queryType": "traceql",
           "refId": "A",
-          "query": "{ service.name = 'anb-worker' } | name = 'tasks.process_video'"
+          "query": "{ service.name = \"anb-worker\" } | name = \"tasks.process_video\""
         }
       ]
     },
@@ -36,7 +36,7 @@
         {
           "queryType": "traceql",
           "refId": "A",
-          "query": "{ service.name = 'anb-worker' } | name = 'tasks.process_video' | duration > 10s"
+          "query": "{ service.name = \"anb-worker\" } | name = \"tasks.process_video\" | duration > 10s"
         }
       ]
     }

@@ -1,47 +1,171 @@
 {
-  "title": "API Tracing — Upload Video (/videos/upload)",
-  "tags": ["tempo", "tracing", "api"],
-  "schemaVersion": 39,
-  "version": 1,
-  "refresh": "10s",
-  "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
   "panels": [
     {
-      "type": "traces",
-      "title": "Recent traces: POST /videos/upload",
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": {
+        "default": false,
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
       "options": {
-        "showSearch": true,
-        "enableTraceIDColumn": true
+        "enableTraceIDColumn": true,
+        "showSearch": true
       },
       "targets": [
         {
-          "queryType": "traceql",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "filters": [
+            {
+              "id": "f6403ab3",
+              "operator": "=",
+              "scope": "span"
+            },
+            {
+              "id": "service-name",
+              "operator": "=",
+              "scope": "resource",
+              "tag": "service.name",
+              "value": [
+                "anb-core"
+              ],
+              "valueType": "string"
+            },
+            {
+              "id": "span-name",
+              "operator": "=",
+              "scope": "span",
+              "tag": "name",
+              "value": [
+                "POST /videos/upload"
+              ],
+              "valueType": "string"
+            }
+          ],
+          "limit": 20,
+          "query": "{ service.name = 'anb-core' } | name =~ '/videos/upload'",
+          "queryType": "traceqlSearch",
           "refId": "A",
-          "query": "{ service.name = 'anb-core' } | name =~ '/videos/upload'"
+          "tableType": "traces"
         }
-      ]
+      ],
+      "title": "Recent traces: POST /videos/upload",
+      "type": "traces"
     },
     {
-      "type": "traces",
-      "title": "Slow traces (> 2s): POST /videos/upload",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": {
+        "default": false,
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
       "options": {
-        "showSearch": true,
-        "enableTraceIDColumn": true
+        "enableTraceIDColumn": true,
+        "showSearch": true
       },
       "targets": [
         {
-          "queryType": "traceql",
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "filters": [
+            {
+              "id": "d38fda2a",
+              "operator": "=",
+              "scope": "span"
+            },
+            {
+              "id": "service-name",
+              "operator": "=",
+              "scope": "resource",
+              "tag": "service.name",
+              "value": [
+                "anb-core"
+              ],
+              "valueType": "string"
+            },
+            {
+              "id": "span-name",
+              "operator": "=",
+              "scope": "span",
+              "tag": "name",
+              "value": [
+                "POST /videos/upload"
+              ],
+              "valueType": "string"
+            },
+            {
+              "id": "min-duration",
+              "operator": ">",
+              "tag": "duration",
+              "value": "2",
+              "valueType": "duration"
+            }
+          ],
+          "limit": 20,
+          "query": "{ service.name = 'anb-core' } | name =~ '/videos/upload' | duration > 2s",
+          "queryType": "traceqlSearch",
           "refId": "A",
-          "query": "{ service.name = 'anb-core' } | name =~ '/videos/upload' | duration > 2s"
+          "tableType": "traces"
         }
-      ]
+      ],
+      "title": "Slow traces (> 2s): POST /videos/upload",
+      "type": "traces"
     }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": [
+    "tempo",
+    "tracing",
+    "api"
   ],
   "templating": {
     "list": []
-  }
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "API Tracing — Upload Video (/videos/upload)",
+  "uid": "bf39hj9jmkcu8d",
+  "version": 1,
+  "weekStart": ""
 }
