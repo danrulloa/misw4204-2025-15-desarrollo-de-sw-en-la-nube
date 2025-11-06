@@ -1,0 +1,47 @@
+{
+  "title": "Worker Tracing — tasks.process_video",
+  "tags": ["tempo", "tracing", "worker"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "traces",
+      "title": "Recent traces: tasks.process_video",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "options": {
+        "showSearch": true,
+        "enableTraceIDColumn": true
+      },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "refId": "A",
+          "query": "{ service.name = 'anb-worker' } | name = 'tasks.process_video'"
+        }
+      ]
+    },
+    {
+      "type": "traces",
+      "title": "Slow traces (> 10s): tasks.process_video",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "options": {
+        "showSearch": true,
+        "enableTraceIDColumn": true
+      },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "refId": "A",
+          "query": "{ service.name = 'anb-worker' } | name = 'tasks.process_video' | duration > 10s"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}
