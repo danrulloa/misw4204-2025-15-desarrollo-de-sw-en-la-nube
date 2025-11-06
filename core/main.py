@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+import logging
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
@@ -16,6 +17,7 @@ from app.exceptions import (
     general_exception_handler,
 )
 from app.observability.tracing import setup_tracing
+from app.observability.logging_filters import install_uvicorn_access_filter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,6 +28,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await engine.dispose()
+
+# Instala un filtro para suprimir logs de acceso de /health y /metrics
+install_uvicorn_access_filter()
 
 app = FastAPI(
     root_path="/api",
