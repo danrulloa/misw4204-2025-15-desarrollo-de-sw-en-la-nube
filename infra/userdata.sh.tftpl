@@ -67,53 +67,7 @@ if [ -z "$s3_bucket" ]; then
   exit 1
 fi
 
-# ====== Resolver OBS IP en CORE/WORKER si no viene (via AWS CLI) ======
-if [ "$ROLE" = "core" ] || [ "$ROLE" = "worker" ]; then
-  if [ -z "$obs_ip" ] || [ "$obs_ip" = "aws_instance.obs.private_ip" ]; then
-    echo "[$(date -Iseconds)] [otel] obs_ip vacío; intentando resolver por AWS CLI (tag Name=anb-obs)"
-    # Preparar credenciales para AWS CLI (logging de fuente)
-    if [ -n "$aws_access_key_id" ]; then
-      export AWS_ACCESS_KEY_ID="$aws_access_key_id"
-      export AWS_SECRET_ACCESS_KEY="$aws_secret_access_key"
-      if [ -n "$aws_session_token" ]; then
-        export AWS_SESSION_TOKEN="$aws_session_token"
-      fi
-      unset AWS_PROFILE || true
-  echo "[$(date -Iseconds)] [aws] usando credenciales explícitas (AKID=***$${aws_access_key_id: -4})"
-    elif [ -n "$aws_profile" ]; then
-      export AWS_PROFILE="$aws_profile"
-      echo "[$(date -Iseconds)] [aws] usando perfil AWS_PROFILE=$aws_profile"
-    else
-      echo "[$(date -Iseconds)] [aws] usando rol de instancia (IMDS)"
-    fi
-    export AWS_DEFAULT_REGION="${aws_region}"
-    echo "[$(date -Iseconds)] [aws] region=$aws_region"
-    echo "[$(date -Iseconds)] [aws] aws --version: $(aws --version 2>&1 || true)"
-    CID="$(aws sts get-caller-identity --query 'Arn' --output text 2>/dev/null || echo 'N/A')"
-    echo "[$(date -Iseconds)] [aws] caller-identity=$CID"
-
-    # Reintentos para esperar a que OBS esté en running y con IP
-    OBS_IP_RESOLVED=""
-    for i in $(seq 1 60); do
-      echo "[$(date -Iseconds)] [otel] intento $i/60: describe-instances tag=anb-obs"
-      OBS_IP_RESOLVED="$(aws ec2 describe-instances \
-        --filters "Name=tag:Name,Values=anb-obs" "Name=instance-state-name,Values=running" \
-        --query "Reservations[0].Instances[0].PrivateIpAddress" \
-        --output text 2>/dev/null || true)"
-      if [ -n "$OBS_IP_RESOLVED" ] && [ "$OBS_IP_RESOLVED" != "None" ]; then
-        echo "[$(date -Iseconds)] [otel] éxito: IP=$OBS_IP_RESOLVED"
-        obs_ip="$OBS_IP_RESOLVED"
-        break
-      fi
-      echo "[$(date -Iseconds)] [otel] aún sin IP; reintentando en 10s"
-      sleep 10
-    done
-
-    if [ -z "$obs_ip" ]; then
-      echo "[$(date -Iseconds)] [otel][WARN] No se pudo resolver OBS IP tras reintentos; OTLP quedará sin endpoint"
-    fi
-  fi
-fi
+# (OTLP/Tempo removido) No se requiere resolución de OBS para tracing
 
 # ====== .env (S3 obligatorio; incluye credenciales AWS si fueron provistas) ======
 cat > /opt/anb-cloud/.env <<EOF
@@ -134,15 +88,6 @@ RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
 RABBITMQ_HOST=${mq_ip}
 
 # Upstreams (WEB)
-# Tracing (OpenTelemetry): core/worker env for OTLP -> Tempo on OBS
-%{ if role == "core" ~}
-OTEL_SERVICE_NAME=anb-core
-%{ else ~}
-%{ if role == "worker" ~}
-OTEL_SERVICE_NAME=anb-worker
-%{ endif ~}
-%{ endif ~}
-# OTEL_EXPORTER_OTLP_TRACES_ENDPOINT se añade después solo si obs_ip tiene valor
 
 # WEB upstreams
 UPSTREAM_API=http://${core_ip}:8000
@@ -180,64 +125,12 @@ S3_MAX_POOL_CONNECTIONS=100
 S3_TRANSFER_MAX_CONCURRENCY=12
 EOF
 
-# Añadir/limpiar OTLP (solo CORE/WORKER) y forzar protocolo HTTP
-if [ "$ROLE" = "core" ] || [ "$ROLE" = "worker" ]; then
-  # Limpiar variables potencialmente conflictivas
-  sed -i '/^OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=/d' /opt/anb-cloud/.env
-  sed -i '/^OTEL_EXPORTER_OTLP_ENDPOINT=/d' /opt/anb-cloud/.env
-  sed -i '/^OTEL_EXPORTER_OTLP_PROTOCOL=/d' /opt/anb-cloud/.env
-  sed -i '/^OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=/d' /opt/anb-cloud/.env
-
-  if [ -n "$obs_ip" ]; then
-    echo "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://$obs_ip:4318/v1/traces" >> /opt/anb-cloud/.env
-    echo "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-    echo "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-    echo "[$(date -Iseconds)] [otel] endpoint http y protocolo http/protobuf fijados"
-  else
-    echo "[anb][WARN] OTEL_EXPORTER_OTLP_TRACES_ENDPOINT no configurado por falta de obs_ip" | tee -a /var/log/anb-bootstrap.log
-  fi
-fi
+# (OTLP/Tempo removido) No se configuran variables OTEL en .env
 
 # Solo exportamos LOKI_URL en runtime (los contenedores lo leen por env/compose)
 export LOKI_URL="$LOKI_URL_VALUE"
 
-# ====== Esperar hasta 10 min a que OTLP tenga host (solo CORE/WORKER) ======
-if [ "$ROLE" = "core" ] || [ "$ROLE" = "worker" ]; then
-  # Normalizar: mantener una sola línea de OTLP y fijarla si ya hay obs_ip
-  sed -i '/^OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=/d' /opt/anb-cloud/.env
-  sed -i '/^OTEL_EXPORTER_OTLP_PROTOCOL=/d' /opt/anb-cloud/.env
-  sed -i '/^OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=/d' /opt/anb-cloud/.env
-  if [ -n "$obs_ip" ]; then
-    echo "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://$obs_ip:4318/v1/traces" >> /opt/anb-cloud/.env
-    echo "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-    echo "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-    echo "[$(date -Iseconds)] [otel] OTLP inicial fijado a http://$obs_ip:4318/v1/traces"
-  fi
-
-  for i in $(seq 1 60); do
-    EP="$(grep -E '^OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=' /opt/anb-cloud/.env | cut -d= -f2- || true)"
-    if echo "$EP" | grep -qE '^http://[0-9.]+:4318/v1/traces$'; then
-      echo "[$(date -Iseconds)] [otel] endpoint listo: $EP"
-      break
-    fi
-    echo "[$(date -Iseconds)] [otel] endpoint vacío o inválido; reintentando seteo ($i/60)"
-
-    OBS_IP_RESOLVED="$(aws ec2 describe-instances \
-      --filters "Name=tag:Name,Values=anb-obs" "Name=instance-state-name,Values=running" \
-      --query "Reservations[0].Instances[0].PrivateIpAddress" \
-      --output text 2>/dev/null || true)"
-    if [ -n "$OBS_IP_RESOLVED" ] && [ "$OBS_IP_RESOLVED" != "None" ]; then
-      sed -i '/^OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=/d' /opt/anb-cloud/.env
-      sed -i '/^OTEL_EXPORTER_OTLP_PROTOCOL=/d' /opt/anb-cloud/.env
-      sed -i '/^OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=/d' /opt/anb-cloud/.env
-      echo "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://$OBS_IP_RESOLVED:4318/v1/traces" >> /opt/anb-cloud/.env
-      echo "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-      echo "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf" >> /opt/anb-cloud/.env
-      echo "[$(date -Iseconds)] [otel] fijado OTLP=http://$OBS_IP_RESOLVED:4318/v1/traces (http/protobuf)"
-    fi
-    sleep 10
-  done
-fi
+# (OTLP/Tempo removido) No se espera por endpoint de trazas
 
 # ====== Prometheus (solo OBS) ======
 if [ "$ROLE" = "obs" ]; then

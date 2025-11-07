@@ -9,7 +9,6 @@ import psycopg
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
-from opentelemetry import trace
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +410,7 @@ def run(self, *args, **kwargs):
         args,
         kwargs,
     )
-    tracer = trace.get_tracer("anb-worker.tasks")
+    # Tracing removed (Tempo rollback)
 
     if not input_path:
         raise ValueError('process_video.run requires input_path as first or second positional argument')
@@ -457,11 +456,7 @@ def run(self, *args, **kwargs):
     )
 
     try:
-        with tracer.start_as_current_span("tasks.process_video", attributes={
-            "video.id": str(video_id),
-            "task.correlation_id": str(correlation_id),
-            "input.path": str(input_path),
-        }):
+        # Process without tracing
             # Gather inputs and determine stream indices
             inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels = _gather_inputs(
                 video_src, intro_path, outro_path, watermark_path
@@ -527,13 +522,6 @@ def run(self, *args, **kwargs):
             return {"status": "ok", "output": output_str}
 
     except Exception as exc:
-        # Record in current span if present
-        try:
-            span = trace.get_current_span()
-            span.record_exception(exc)
-            span.set_attribute("error", True)
-        except Exception:
-            pass
         logger.exception('Processing failed')
         raise task_self.retry(exc=exc, countdown=30, max_retries=2)
     finally:

@@ -16,7 +16,6 @@ from app.exceptions import (
     validation_exception_handler,
     general_exception_handler,
 )
-from app.observability.tracing import setup_tracing
 from app.observability.logging_filters import install_uvicorn_access_filter
 
 @asynccontextmanager
@@ -31,6 +30,15 @@ async def lifespan(app: FastAPI):
 
 # Instala un filtro para suprimir logs de acceso de /health y /metrics
 install_uvicorn_access_filter()
+
+# Asegura que los logs de la app (anb.*) se vean a nivel INFO usando el handler de Uvicorn
+_uvicorn_err_logger = logging.getLogger("uvicorn.error")
+_app_base_logger = logging.getLogger("anb")
+if _uvicorn_err_logger.handlers:
+    _app_base_logger.handlers = _uvicorn_err_logger.handlers
+    _app_base_logger.setLevel(logging.INFO)
+    # Evita doble log al propagar al root
+    _app_base_logger.propagate = False
 
 app = FastAPI(
     root_path="/api",
@@ -61,8 +69,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 
-# Enable OpenTelemetry tracing
-setup_tracing(app)
+# Tracing deshabilitado (Tempo retirado)
 
 from app.api import videos, public, auth
 app.include_router(videos.router)

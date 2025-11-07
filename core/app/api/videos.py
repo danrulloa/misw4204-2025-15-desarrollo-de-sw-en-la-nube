@@ -15,7 +15,6 @@ from app.services.videos.base import VideoQueryServicePort
 from app.services.storage.utils import storage_path_to_public_url
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
-from opentelemetry import trace
 from app.schemas.video import (
     VideoUploadResponse,
     VideoListItemResponse,
@@ -72,44 +71,15 @@ async def upload_video(
     user_id = _current_user_id(creds)
     user_info = _get_user_from_request(request)
 
-    tracer = trace.get_tracer("anb-core.api")
-    # Create a child span under the request span to capture the upload service call
-    with tracer.start_as_current_span("videos.upload") as span:
-        span.set_attribute("enduser.id", user_id)
-        span.set_attribute("video.title", title)
-        if getattr(video_file, "filename", None):
-            span.set_attribute("video.filename", video_file.filename)
-        if getattr(video_file, "content_type", None):
-            span.set_attribute("video.content_type", video_file.content_type)
-
-        service: UploadServicePort = get_upload_service()
-        # Start a dedicated child span that will act as a grouped container for the
-        # upload phases (reception/storage/mq/db). The service will create the
-        # per-phase spans as children of this span, so in Tempo you can expand a
-        # single grouped span and see the four main phases clearly.
-        with tracer.start_as_current_span("upload.phases") as phases_span:
-            # Annotate with some context useful for traces
-            phases_span.set_attribute("enduser.id", user_id)
-            phases_span.set_attribute("video.filename", getattr(video_file, "filename", None))
-            phases_span.add_event("upload.phases.started")
-            try:
-                video, correlation_id = await service.upload(
-                    user_id=user_id,
-                    title=title,
-                    upload_file=video_file,
-                    user_info=user_info,
-                    db=db,
-                )
-                phases_span.add_event("upload.phases.completed", {"correlation_id": correlation_id})
-                phases_span.set_attribute("task.correlation_id", correlation_id)
-                span.set_attribute("task.correlation_id", correlation_id)
-            except Exception as e:
-                # Record exception details on the span and re-raise
-                phases_span.record_exception(e)
-                phases_span.set_attribute("error", True)
-                span.record_exception(e)
-                span.set_attribute("error", True)
-                raise
+    service: UploadServicePort = get_upload_service()
+    # Sin tracing: ejecutar el flujo directamente
+    video, correlation_id = await service.upload(
+        user_id=user_id,
+        title=title,
+        upload_file=video_file,
+        user_info=user_info,
+        db=db,
+    )
 
     response.headers["Location"] = f"/api/videos/{video.id}"
     return VideoUploadResponse(
