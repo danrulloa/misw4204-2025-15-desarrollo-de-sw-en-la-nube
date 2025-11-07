@@ -83,20 +83,33 @@ async def upload_video(
             span.set_attribute("video.content_type", video_file.content_type)
 
         service: UploadServicePort = get_upload_service()
-        try:
-            video, correlation_id = await service.upload(
-                user_id=user_id,
-                title=title,
-                upload_file=video_file,
-                user_info=user_info,
-                db=db,
-            )
-            span.set_attribute("task.correlation_id", correlation_id)
-        except Exception as e:
-            # Record exception details on the span and re-raise
-            span.record_exception(e)
-            span.set_attribute("error", True)
-            raise
+        # Start a dedicated child span that will act as a grouped container for the
+        # upload phases (reception/storage/mq/db). The service will create the
+        # per-phase spans as children of this span, so in Tempo you can expand a
+        # single grouped span and see the four main phases clearly.
+        with tracer.start_as_current_span("upload.phases") as phases_span:
+            # Annotate with some context useful for traces
+            phases_span.set_attribute("enduser.id", user_id)
+            phases_span.set_attribute("video.filename", getattr(video_file, "filename", None))
+            phases_span.add_event("upload.phases.started")
+            try:
+                video, correlation_id = await service.upload(
+                    user_id=user_id,
+                    title=title,
+                    upload_file=video_file,
+                    user_info=user_info,
+                    db=db,
+                )
+                phases_span.add_event("upload.phases.completed", {"correlation_id": correlation_id})
+                phases_span.set_attribute("task.correlation_id", correlation_id)
+                span.set_attribute("task.correlation_id", correlation_id)
+            except Exception as e:
+                # Record exception details on the span and re-raise
+                phases_span.record_exception(e)
+                phases_span.set_attribute("error", True)
+                span.record_exception(e)
+                span.set_attribute("error", True)
+                raise
 
     response.headers["Location"] = f"/api/videos/{video.id}"
     return VideoUploadResponse(
