@@ -120,6 +120,10 @@ variable "instance_type_core" {
   type    = string
   default = "t3.small"
 }
+variable "instance_type_auth" {
+  type    = string
+  default = "t3.small"
+}
 variable "instance_type_mq" {
   type    = string
   default = "t3.small"
@@ -270,14 +274,7 @@ resource "aws_security_group_rule" "core_from_alb_8000" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.alb.id
 }
-resource "aws_security_group_rule" "core_from_alb_8001" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.core.id
-  from_port                = 8001
-  to_port                  = 8001
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb.id
-}
+## Auth will move to its own SG; remove ALB->8001 on CORE
 
 # Allow Prometheus (OBS) to scrape CORE metrics (API 8000, Auth 8001) and cadvisor (8080)
 resource "aws_security_group_rule" "core_from_obs_8000" {
@@ -288,14 +285,7 @@ resource "aws_security_group_rule" "core_from_obs_8000" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.obs.id
 }
-resource "aws_security_group_rule" "core_from_obs_8001" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.core.id
-  from_port                = 8001
-  to_port                  = 8001
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
+## Auth will move to its own SG; remove OBS->8001 on CORE
 resource "aws_security_group_rule" "core_from_obs_8080" {
   type                     = "ingress"
   security_group_id        = aws_security_group.core.id
@@ -331,6 +321,77 @@ resource "aws_security_group" "worker" {
   tags        = local.tags_base
 }
 
+# AUTH: 8001 (Auth app) desde ALB/CORE/OBS y 8080 (cAdvisor) desde OBS
+resource "aws_security_group" "auth" {
+  name        = "anb-auth-sg"
+  description = "AUTH ingress from ALB/CORE and OBS"
+  vpc_id      = data.aws_vpc.default.id
+  tags        = local.tags_base
+}
+
+resource "aws_security_group_rule" "auth_from_alb_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "auth_from_core_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.core.id
+}
+
+resource "aws_security_group_rule" "auth_from_obs_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
+resource "aws_security_group_rule" "auth_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
+resource "aws_security_group_rule" "auth_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "auth_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "auth_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # RDS: Security group para bases de datos RDS
 resource "aws_security_group" "rds" {
   name        = "anb-rds-sg"
@@ -349,6 +410,16 @@ resource "aws_security_group_rule" "rds_ingress_from_core" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.core.id
   description              = "Core/API to RDS"
+}
+
+resource "aws_security_group_rule" "rds_ingress_from_auth" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.rds.id
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.auth.id
+  description              = "Auth service to RDS"
 }
 
 resource "aws_security_group_rule" "rds_ingress_from_worker" {
@@ -719,6 +790,7 @@ resource "aws_instance" "core" {
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
+  auth_ip               = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = aws_db_instance.auth.address,
@@ -735,6 +807,45 @@ resource "aws_instance" "core" {
   tags = merge(local.tags_base, { Name = "anb-core" })
   root_block_device {
     volume_size = 40
+    volume_type = "gp3"
+  }
+}
+
+resource "aws_instance" "auth" {
+  ami                         = local.ami_id
+  instance_type               = var.instance_type_auth
+  subnet_id                   = local.subnet_id
+  associate_public_ip_address = true
+  key_name                    = var.key_name == "" ? null : var.key_name
+  vpc_security_group_ids      = [aws_security_group.auth.id]
+  depends_on                  = [aws_db_instance.auth, aws_s3_bucket.anb_videos]
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role                  = "auth",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+  core_ip               = "",
+  mq_ip                 = "",
+  worker_ip             = "",
+  obs_ip                = "",
+    auth_ip               = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = aws_db_instance.auth.address,
+    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
+  })
+  tags = merge(local.tags_base, { Name = "anb-auth" })
+  root_block_device {
+    volume_size = 30
     volume_type = "gp3"
   }
 }
@@ -792,6 +903,7 @@ resource "aws_instance" "obs" {
     compose_file          = var.compose_file,
     web_ip                = "",
     core_ip               = aws_instance.core.private_ip,
+    auth_ip               = aws_instance.auth.private_ip,
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = aws_instance.worker.private_ip,
     obs_ip                = "",
@@ -1277,9 +1389,9 @@ resource "aws_lb_target_group_attachment" "att_api_core" {
   target_id        = aws_instance.core.id
 }
 
-resource "aws_lb_target_group_attachment" "att_auth_core" {
+resource "aws_lb_target_group_attachment" "att_auth_auth" {
   target_group_arn = aws_lb_target_group.tg_auth.arn
-  target_id        = aws_instance.core.id
+  target_id        = aws_instance.auth.id
 }
 
 resource "aws_lb_target_group_attachment" "att_rmq_mq" {
@@ -1394,6 +1506,7 @@ resource "null_resource" "alb_apply_transform_prom" {
 output "public_ips" {
   value = {
     core   = aws_instance.core.public_ip
+    auth   = aws_instance.auth.public_ip
     mq     = aws_instance.mq.public_ip
     worker = aws_instance.worker.public_ip
     obs    = aws_instance.obs.public_ip
@@ -1403,6 +1516,7 @@ output "public_ips" {
 output "private_ips" {
   value = {
     core   = aws_instance.core.private_ip
+    auth   = aws_instance.auth.private_ip
     mq     = aws_instance.mq.private_ip
     worker = aws_instance.worker.private_ip
     obs    = aws_instance.obs.private_ip

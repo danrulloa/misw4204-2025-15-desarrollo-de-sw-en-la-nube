@@ -24,13 +24,14 @@ scrape_configs:
     static_configs:
       - targets:
         - "__CORE_IP__:8080"
+        - "__AUTH_IP__:8080"
         - "__MQ_IP__:8080"
         - "__WORKER_IP__:8080"
 
   - job_name: "api-auth"
     metrics_path: /auth/metrics
     static_configs:
-      - targets: ["__CORE_IP__:8001"]
+      - targets: ["__AUTH_IP__:8001"]
 
   - job_name: "api-core"
     metrics_path: /metrics

@@ -28,30 +28,7 @@ services:
       retries: 5
       start_period: 25s
     networks: [ internal ]
-
-  anb-auth-service:
-    profiles: ["core"]
-    image: ftaboadar/anb-auth:latest
-    container_name: anb-auth-service
-    ports:
-      - "8001:8000"                    
-    env_file: [ .env ]
-    environment:
-      - APP_ENV=${APP_ENV:-production}
-      - PORT=8000
-      - DATABASE_URL=${DB_URL_AUTH}      
-      - JWT_SECRET=${JWT_SECRET:-changeme}
-
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/auth/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
-      interval: 15s
-      timeout: 5s
-      start_period: 25s
-      retries: 5
-    networks: [ internal ]
-
+  
   cadvisor-core:
     profiles: ["core","obs-agent"]
     image: gcr.io/cadvisor/cadvisor:latest
@@ -84,6 +61,63 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
+# ================== AUTH ==================
+  anb-auth-service:
+    profiles: ["auth"]
+    image: ftaboadar/anb-auth:latest
+    container_name: anb-auth-service
+    ports:
+      - "8001:8000"                    
+    env_file: [ .env ]
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=8000
+      - DATABASE_URL=${DB_URL_AUTH}      
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/auth/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
+      interval: 15s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
+    networks: [ internal ]
+  
+  cadvisor-auth:
+    profiles: ["auth","obs-agent"]
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor-auth
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+    networks: [ internal ]
+
+  promtail-auth:
+    profiles: ["auth","obs-agent"]
+    image: grafana/promtail:2.9.4
+    container_name: promtail-auth
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      - LOKI_URL=${LOKI_URL}
+    volumes:
+      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    networks: [ internal ]
+
+ 
   # ================== MQ ==================
   rabbitmq:
     profiles: ["mq"]
