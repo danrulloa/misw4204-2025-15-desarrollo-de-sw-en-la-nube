@@ -12,10 +12,11 @@ from app.services.storage._init_ import get_storage
 from app.services.mq.rabbit import RabbitPublisher
 
 import asyncio
-import inspect
 import time
+import inspect
 from opentelemetry import trace
 from opentelemetry.trace import Span
+from app.services.storage.executors import get_io_executor
 
 logger = logging.getLogger("anb.uploads")
 tracer = trace.get_tracer("anb-core.uploads")
@@ -63,22 +64,16 @@ class LocalUploadService:
             storage_start_perf = time.perf_counter()
             storage_start_ns = time.time_ns()
 
-            # Support both async and sync storage implementations.
+            # StoragePort.save es síncrono por contrato: ejecútalo en el pool I/O dedicado
             save_fn = getattr(storage, "save")
-            if inspect.iscoroutinefunction(save_fn):
-                saved_rel_path = await save_fn(
-                    upload_file.file,
-                    filename,
-                    upload_file.content_type or "application/octet-stream",
-                )
-            else:
-                # Run potentially blocking sync save in a thread to avoid blocking the event loop
-                saved_rel_path = await asyncio.to_thread(
-                    save_fn,
-                    upload_file.file,
-                    filename,
-                    upload_file.content_type or "application/octet-stream",
-                )
+            loop = asyncio.get_running_loop()
+            saved_rel_path = await loop.run_in_executor(
+                get_io_executor(),
+                save_fn,
+                upload_file.file,
+                filename,
+                upload_file.content_type or "application/octet-stream",
+            )
 
             storage_end_perf = time.perf_counter()
             storage_end_ns = time.time_ns()

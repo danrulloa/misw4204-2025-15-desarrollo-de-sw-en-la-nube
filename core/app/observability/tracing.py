@@ -1,4 +1,7 @@
 import os
+import logging
+import socket
+from urllib.parse import urlparse
 from typing import Optional
 
 from fastapi import FastAPI
@@ -10,6 +13,26 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+
+logger = logging.getLogger("anb.tracing")
+
+
+def _is_endpoint_reachable(endpoint: str, timeout: float = 0.5) -> bool:
+    """Quick TCP reachability check to avoid noisy exporter errors when Tempo is down.
+
+    Supports endpoints like http://host:4318/v1/traces. Only checks host:port.
+    """
+    try:
+        parsed = urlparse(endpoint)
+        host = parsed.hostname
+        port = parsed.port
+        if not host or not port:
+            return False
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except Exception:
+        return False
 
 
 def _build_exporter() -> Optional[OTLPSpanExporter]:
@@ -25,10 +48,17 @@ def _build_exporter() -> Optional[OTLPSpanExporter]:
 
     if not endpoint:
         # No endpoint configured -> do not create exporter (no-op)
+        logger.warning("OTLP traces endpoint not configured; tracing exporter disabled")
+        return None
+
+    # Avoid log spam if Tempo is unreachable: skip exporter when TCP connect fails.
+    if not _is_endpoint_reachable(endpoint):
+        logger.warning("OTLP endpoint %s not reachable; disabling exporter to keep app healthy", endpoint)
         return None
 
     # If using HTTP endpoint without TLS, exporter needs insecure=True via env var
     # but HTTP exporter works fine with plain http endpoints by default.
+    logger.info("Configuring OTLP HTTP exporter -> %s", endpoint)
     return OTLPSpanExporter(endpoint=endpoint)
 
 

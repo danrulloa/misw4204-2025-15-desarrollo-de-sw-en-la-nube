@@ -33,7 +33,7 @@ class S3StorageAdapter(StoragePort):
         # Lazy import to avoid hard dependency when not used
         import boto3  # type: ignore
         from botocore.config import Config  # type: ignore
-        from botocore.exceptions import NoCredentialsError  # type: ignore
+        from boto3.s3.transfer import TransferConfig  # type: ignore
 
         # Fail fast si faltan datos críticos
         missing = []
@@ -48,7 +48,15 @@ class S3StorageAdapter(StoragePort):
         if missing:
             raise RuntimeError(f"Configuración S3/AWS incompleta: falta(n) {', '.join(missing)}")
 
-        config = Config(s3={"addressing_style": "path"} if self.force_path_style else {})
+        # Tune botocore connection pool and transfer concurrency for higher throughput
+        max_pool = int(os.getenv("S3_MAX_POOL_CONNECTIONS", "50"))
+        transfer_concurrency = int(os.getenv("S3_TRANSFER_MAX_CONCURRENCY", "8"))
+
+        config = Config(
+            s3={"addressing_style": "path"} if self.force_path_style else {},
+            retries={"max_attempts": 3},
+            max_pool_connections=max_pool,
+        )
         # Crear cliente con credenciales explícitas (sin cadena de proveedores)
         self._s3 = boto3.client(
             "s3",
@@ -59,6 +67,12 @@ class S3StorageAdapter(StoragePort):
             endpoint_url=self.endpoint_url,
             config=config,
             verify=self.verify_ssl,
+        )
+        # Configure multipart uploads (boto3 uses its own internal threads per transfer)
+        self._transfer_cfg = TransferConfig(
+            max_concurrency=transfer_concurrency,
+            multipart_threshold=8 * 1024 * 1024,
+            multipart_chunksize=8 * 1024 * 1024,
         )
 
     def save(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
@@ -75,63 +89,11 @@ class S3StorageAdapter(StoragePort):
             Bucket=self.bucket,
             Key=key,
             ExtraArgs={"ContentType": content_type or "application/octet-stream"},
+            Config=self._transfer_cfg,
         )
 
         # Para mantener compatibilidad con el resto del flujo, devolvemos
         # una ruta lógica con prefijo '/uploads'.
         return f"/{key}"
 
-    async def save(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:  # async compatible alias
-        """Async-compatible save method: delegates to save_async.
-
-        Having `save` as an async function allows callers that inspect for an
-        async `save` to await it directly. Internally we still lazy-import
-        aioboto3 in `save_async`.
-        """
-        return await self.save_async(fileobj, filename, content_type)
-
-    async def save_async(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
-        """Async save using aioboto3. Kept as `save_async` to avoid changing public sync API.
-
-        This method is lazy-imported to avoid requiring aioboto3 unless the async path is used.
-        """
-        # Lazy import aioboto3 to avoid adding runtime penalty when not used
-        try:
-            import aioboto3  # type: ignore
-        except Exception as e:
-            raise RuntimeError("aioboto3 is required for async S3 operations") from e
-
-        today = datetime.utcnow()
-        day_dir = f"{today:%Y}/{today:%m}/{today:%d}"
-        safe_name = f"{uuid.uuid4().hex}-{os.path.basename(filename)}"
-        key = f"{self.prefix}/{day_dir}/{safe_name}"
-
-        # Reset to start
-        try:
-            fileobj.seek(0)
-        except Exception:
-            pass
-
-        session = aioboto3.Session()
-        # Create client with same credentials
-        async with session.client(
-            "s3",
-            aws_access_key_id=self.access_key_id,
-            aws_secret_access_key=self.secret_access_key,
-            aws_session_token=self.session_token,
-            region_name=self.region,
-            endpoint_url=self.endpoint_url,
-        ) as s3:
-            # aioboto3's upload_fileobj is async
-            await s3.upload_fileobj(
-                Fileobj=fileobj,
-                Bucket=self.bucket,
-                Key=key,
-                ExtraArgs={"ContentType": content_type or "application/octet-stream"},
-            )
-
-        return f"/{key}"
-
-    # Backwards compatible alias name used by some callers
-    async def save_async_compat(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
-        return await self.save_async(fileobj, filename, content_type)
+    # Nota: ruta única optimizada -> save() síncrono con boto3; no se expone variante async.

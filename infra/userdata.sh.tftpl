@@ -172,6 +172,12 @@ S3_REGION=${aws_region}
 S3_PREFIX=uploads
 S3_FORCE_PATH_STYLE=0
 S3_VERIFY_SSL=1
+
+# Upload tuning (concurrency & S3 transfer)
+# Ajustables vía Terraform en el futuro; por ahora dejamos valores recomendados por defecto
+UPLOAD_IO_MAX_WORKERS=32
+S3_MAX_POOL_CONNECTIONS=100
+S3_TRANSFER_MAX_CONCURRENCY=12
 EOF
 
 # Añadir/limpiar OTLP (solo CORE/WORKER) y forzar protocolo HTTP
