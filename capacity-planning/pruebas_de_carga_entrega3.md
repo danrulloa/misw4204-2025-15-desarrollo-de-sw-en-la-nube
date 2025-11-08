@@ -1,4 +1,4 @@
-# Pruebas de Carga y Calidad - Entrega 3
+# Plan y Análisis de Pruebas de Carga - Entrega 3
 
 ## Objetivo
 
@@ -6,21 +6,135 @@ Evaluar el comportamiento de la aplicación desplegada en AWS bajo diferentes es
 
 ---
 
-## Configuración de Infraestructura
+# PARTE 1: PLAN DE PRUEBAS REFINADO
 
-**Herramienta**: k6
+## 1. Metodología y Herramientas
 
-**Infraestructura AWS**:
-- Core API: Auto Scaling Group (ASG) - t3.small, 1-3 instancias
-- Worker: EC2 t3.large
-- Database: Amazon RDS PostgreSQL (db.t3.micro)
-- Storage: Amazon S3
-- Load Balancer: Application Load Balancer (ALB)
-- Message Broker: RabbitMQ (EC2 t3.small)
+### 1.1 Herramienta de Pruebas
+
+**k6 (Grafana k6)**
+- Herramienta moderna de testing de performance
+- Scripting en JavaScript ES6
+- Métricas detalladas out-of-the-box
+- Open source y altamente eficiente
+
+**Justificación**: Se selecciona k6 por la experiencia previa del equipo, su facilidad de uso, y su capacidad para generar reportes detallados de latencia y throughput.
+
+### 1.2 Infraestructura AWS de Pruebas
+
+- **Core API**: Auto Scaling Group (ASG) - t3.small, 1-3 instancias
+- **Worker**: EC2 t3.large
+- **Database**: Amazon RDS PostgreSQL (db.t3.micro) - 2 instancias (core, auth)
+- **Storage**: Amazon S3
+- **Load Balancer**: Application Load Balancer (ALB)
+- **Message Broker**: RabbitMQ (EC2 t3.small)
+
+### 1.3 Observabilidad
+
+- **Prometheus**: Recolección de métricas de servicios
+- **Grafana**: Visualización de métricas en tiempo real
+- **CloudWatch**: Métricas de AWS (ASG, ALB, RDS, S3)
+- **Loki**: Agregación y consulta de logs
 
 ---
 
-## 1. Pruebas de Core API con Escalado Automático
+## 2. Escenarios de Prueba
+
+### 2.1 Escenario 1: Core API con Escalado Automático
+
+**Objetivo**: Determinar la capacidad máxima del Core API con escalado automático activo, medir el comportamiento del ASG y evaluar la efectividad del balanceador de carga.
+
+**Pruebas a ejecutar**:
+1. **Prueba de Sanidad**: 5 VUs, 1 minuto - Validar funcionamiento básico
+2. **Prueba de Escalamiento**: Ramp-up progresivo - Activar escalado automático
+3. **Prueba Sostenida**: Carga constante - Evaluar estabilidad
+
+**Métricas a evaluar**:
+- Latencia (p50, p95, p99)
+- Throughput (RPS)
+- Tasa de errores (4xx, 5xx)
+- Comportamiento del ASG (instancias, CPU, tiempo de escalado)
+- Métricas del ALB (latencia, request count)
+
+**Criterios de Éxito**:
+- p95 ≤ 2000 ms (considerando procesamiento real)
+- Tasa de errores 5xx = 0%
+- Tasa de éxito ≥ 95%
+- ASG escala correctamente cuando CPU > 60%
+
+### 2.2 Escenario 2: Worker de Procesamiento de Videos
+
+**Objetivo**: Medir el throughput del worker procesando videos de diferentes tamaños y evaluar la capacidad de procesamiento.
+
+**Pruebas a ejecutar**:
+1. **Throughput básico**: Procesar videos de tamaño estándar
+2. **Diferentes tamaños**: Evaluar rendimiento con videos pequeños, medianos y grandes
+3. **Saturación**: Identificar capacidad máxima y puntos de saturación
+
+**Métricas a evaluar**:
+- Throughput (videos/minuto)
+- Tiempo promedio de procesamiento por video
+- Uso de CPU y memoria
+- Estado de cola de RabbitMQ
+- Operaciones S3 (descargas y subidas)
+
+**Criterios de Éxito**:
+- Throughput sostenido medible
+- Cola de RabbitMQ estable (sin crecimiento indefinido)
+- Sin errores en el procesamiento
+
+### 2.3 Análisis de Calidad de Código
+
+**Objetivo**: Verificar la calidad del código mediante análisis estático con SonarQube.
+
+**Servicios a analizar**:
+- Core API
+- Auth Service
+- Worker
+
+**Métricas a evaluar**:
+- Quality Gate (PASSED/FAILED)
+- Cobertura de código
+- Bugs, vulnerabilidades, code smells
+- Deuda técnica
+
+**Criterios de Éxito**:
+- Quality Gate: PASSED en todos los servicios
+- Cobertura ≥ 80%
+- Sin bugs críticos o bloqueantes
+
+---
+
+## 3. Procedimiento de Ejecución
+
+### 3.1 Preparación
+
+1. Verificar que la infraestructura AWS esté desplegada
+2. Confirmar que todos los servicios estén operativos
+3. Verificar acceso a dashboards de observabilidad (Grafana, CloudWatch)
+4. Preparar scripts de k6 y videos de prueba
+
+### 3.2 Ejecución de Pruebas
+
+1. Ejecutar prueba de sanidad para validar el sistema
+2. Ejecutar prueba de escalamiento y monitorear comportamiento del ASG
+3. Ejecutar prueba sostenida para evaluar estabilidad
+4. Ejecutar pruebas del worker con diferentes configuraciones
+5. Recolectar métricas de SonarQube
+
+### 3.3 Recolección de Datos
+
+- Capturas de resultados de k6
+- Screenshots de dashboards de Grafana
+- Métricas de CloudWatch (ASG, ALB, RDS, S3)
+- Reportes de SonarQube
+- Logs relevantes del sistema
+
+---
+
+# PARTE 2: ANÁLISIS DE RESULTADOS
+
+## 1. Resultados de Pruebas de Core API con Escalado Automático
 
 ### 1.1 Prueba de Sanidad
 
