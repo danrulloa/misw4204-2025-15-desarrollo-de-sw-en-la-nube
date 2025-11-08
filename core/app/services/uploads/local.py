@@ -38,19 +38,16 @@ class LocalUploadService:
         db: AsyncSession,
         correlation_id: str,
     ) -> Tuple[Video, str]:
-        # Logs: entrada
-        try:
-            logger.info(
-                "Entrando a LocalUploadService.upload",
-                extra={
-                    "correlation_id": correlation_id,
-                    "usuario": user_id,
-                    "titulo": title,
-                    "archivo": getattr(upload_file, "filename", None),
-                },
-            )
-        except Exception:
-            pass
+        # Log de entrada
+        logger.info(
+            "Entrando a LocalUploadService.upload",
+            extra={
+                "correlation_id": correlation_id,
+                "usuario": user_id,
+                "titulo": title,
+                "archivo_nombre": getattr(upload_file, "filename", None),
+            },
+        )
 
         # Start reception timer (monotonic)
         recv_start_perf = time.perf_counter()
@@ -69,13 +66,10 @@ class LocalUploadService:
             save_fn = getattr(storage, "save")
             loop = asyncio.get_running_loop()
             # Log entrada a almacenamiento
-            try:
-                logger.info(
-                    "Guardando archivo en almacenamiento",
-                    extra={"correlation_id": correlation_id, "filename": filename},
-                )
-            except Exception:
-                pass
+            logger.info(
+                "Guardando archivo en almacenamiento",
+                extra={"correlation_id": correlation_id, "archivo_nombre": filename},
+            )
             saved_rel_path = await loop.run_in_executor(
                 get_io_executor(),
                 save_fn,
@@ -84,13 +78,10 @@ class LocalUploadService:
                 upload_file.content_type or "application/octet-stream",
             )
             # Log salida de almacenamiento
-            try:
-                logger.info(
-                    "Archivo guardado en almacenamiento",
-                    extra={"correlation_id": correlation_id, "ruta": saved_rel_path},
-                )
-            except Exception:
-                pass
+            logger.info(
+                "Archivo guardado en almacenamiento",
+                extra={"correlation_id": correlation_id, "ruta": saved_rel_path},
+            )
 
             storage_end_perf = time.perf_counter()
 
@@ -228,13 +219,10 @@ class LocalUploadService:
         return video, correlation_id
 
     def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
-        try:
-            logger.info(
-                "Entrando a validación de extensión y tamaño",
-                extra={"correlation_id": correlation_id, "archivo": getattr(file, "filename", None)},
-            )
-        except Exception:
-            pass
+        logger.info(
+            "Entrando a validación de extensión y tamaño",
+            extra={"correlation_id": correlation_id, "archivo_nombre": getattr(file, "filename", None)},
+        )
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")
         allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
@@ -251,11 +239,8 @@ class LocalUploadService:
                 status_code=413,
                 detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.",
             )
-        try:
-            logger.info(
-                "Saliendo de validación de extensión y tamaño",
-                extra={"correlation_id": correlation_id, "tamano_bytes": size_bytes, "extension": ext},
-            )
-        except Exception:
-            pass
+        logger.info(
+            "Saliendo de validación de extensión y tamaño",
+            extra={"correlation_id": correlation_id, "tamano_bytes": size_bytes, "extension": ext},
+        )
         return ext, size_bytes

@@ -78,19 +78,16 @@ async def upload_video(
     user_info = _get_user_from_request(request)
 
     service: UploadServicePort = get_upload_service()
-    # Logs de entrada
-    try:
-        log.info(
-            "Entrando a upload_video",
-            extra={
-                "correlation_id": correlation_id,
-                "usuario": user_id,
-                "titulo": title,
-                "archivo": getattr(video_file, "filename", None),
-            },
-        )
-    except Exception:
-        pass
+    # Log de entrada
+    log.info(
+        "Entrando a upload_video",
+        extra={
+            "correlation_id": correlation_id,
+            "usuario": user_id,
+            "titulo": title,
+            "archivo_nombre": getattr(video_file, "filename", None),
+        },
+    )
 
     # Ejecutar el flujo, propagando correlation_id
     video, correlation_id = await service.upload(
@@ -108,17 +105,14 @@ async def upload_video(
         video_id=str(video.id),
         task_id=correlation_id,
     )
-    # Logs de salida
-    try:
-        log.info(
-            "Saliendo de upload_video",
-            extra={
-                "correlation_id": correlation_id,
-                "video_id": str(video.id),
-            },
-        )
-    except Exception:
-        pass
+    # Log de salida
+    log.info(
+        "Saliendo de upload_video",
+        extra={
+            "correlation_id": correlation_id,
+            "video_id": str(video.id),
+        },
+    )
     return result
 
 

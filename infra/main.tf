@@ -856,7 +856,7 @@ resource "aws_autoscaling_group" "core" {
     "GroupTerminatingInstances",
     "GroupTotalInstances"
   ]
-  target_group_arns         = [aws_lb_target_group.tg_api.arn]
+  target_group_arns = [aws_lb_target_group.tg_api.arn]
 
   launch_template {
     id      = aws_launch_template.core_lt.id
