@@ -12,6 +12,7 @@ class UploadServicePort(Protocol):
         upload_file: UploadFile,
         user_info: Dict[str, str],
         db: AsyncSession,
+        correlation_id: str,
     ):
         """
         Orquesta la subida de un video y su encolado para procesamiento.

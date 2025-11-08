@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import logging
+from logging import StreamHandler, Formatter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
@@ -35,9 +36,16 @@ install_uvicorn_access_filter()
 _uvicorn_err_logger = logging.getLogger("uvicorn.error")
 _app_base_logger = logging.getLogger("anb")
 if _uvicorn_err_logger.handlers:
+    # Reutiliza los handlers de Uvicorn si ya están disponibles
     _app_base_logger.handlers = _uvicorn_err_logger.handlers
     _app_base_logger.setLevel(logging.INFO)
-    # Evita doble log al propagar al root
+    _app_base_logger.propagate = False
+else:
+    # Fallback: asegura un handler a stdout para 'anb' si Uvicorn aún no configuró logging
+    fallback_handler = StreamHandler()
+    fallback_handler.setFormatter(Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+    _app_base_logger.addHandler(fallback_handler)
+    _app_base_logger.setLevel(logging.INFO)
     _app_base_logger.propagate = False
 
 app = FastAPI(

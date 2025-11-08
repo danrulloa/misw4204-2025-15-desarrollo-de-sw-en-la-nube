@@ -36,11 +36,26 @@ class LocalUploadService:
         upload_file: UploadFile,
         user_info: Dict[str, str],
         db: AsyncSession,
+        correlation_id: str,
     ) -> Tuple[Video, str]:
+        # Logs: entrada
+        try:
+            logger.info(
+                "Entrando a LocalUploadService.upload",
+                extra={
+                    "correlation_id": correlation_id,
+                    "usuario": user_id,
+                    "titulo": title,
+                    "archivo": getattr(upload_file, "filename", None),
+                },
+            )
+        except Exception:
+            pass
+
         # Start reception timer (monotonic)
         recv_start_perf = time.perf_counter()
 
-        ext, size_bytes = self._validate_ext_and_size(upload_file)
+        ext, size_bytes = self._validate_ext_and_size(upload_file, correlation_id=correlation_id)
 
         storage = get_storage()
         filename = f"{uuid.uuid4().hex}.{ext}"
@@ -53,6 +68,14 @@ class LocalUploadService:
             # StoragePort.save es síncrono por contrato: ejecútalo en el pool I/O dedicado
             save_fn = getattr(storage, "save")
             loop = asyncio.get_running_loop()
+            # Log entrada a almacenamiento
+            try:
+                logger.info(
+                    "Guardando archivo en almacenamiento",
+                    extra={"correlation_id": correlation_id, "filename": filename},
+                )
+            except Exception:
+                pass
             saved_rel_path = await loop.run_in_executor(
                 get_io_executor(),
                 save_fn,
@@ -60,6 +83,14 @@ class LocalUploadService:
                 filename,
                 upload_file.content_type or "application/octet-stream",
             )
+            # Log salida de almacenamiento
+            try:
+                logger.info(
+                    "Archivo guardado en almacenamiento",
+                    extra={"correlation_id": correlation_id, "ruta": saved_rel_path},
+                )
+            except Exception:
+                pass
 
             storage_end_perf = time.perf_counter()
 
@@ -77,7 +108,10 @@ class LocalUploadService:
             )
 
         except Exception as e:
-            logger.exception("Upload failed storing file in backend", extra={"user_id": user_id, "title": title})
+            logger.exception(
+                "Error guardando archivo en almacenamiento",
+                extra={"correlation_id": correlation_id, "usuario": user_id, "titulo": title},
+            )
             raise HTTPException(status_code=502, detail=f"Error guardando archivo en storage: {e}")
 
         video = Video(
@@ -110,9 +144,7 @@ class LocalUploadService:
             # Local: mantener comportamiento actual
             input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
         
-        correlation_id = f"req-{uuid.uuid4().hex[:12]}"
-
-        # Actualizar correlation_id y status antes de encolar
+    # Actualizar correlation_id y status antes de encolar
         video.correlation_id = correlation_id
         video.status = VideoStatus.processing
 
@@ -152,11 +184,11 @@ class LocalUploadService:
             mq_duration_ms = (mq_end_perf - mq_start_perf) * 1000.0
 
             logger.info(
-                "MQ publish timing",
+                "Publicación en MQ completada",
                 extra={
                     "video_id": str(video.id),
                     "correlation_id": correlation_id,
-                    "mq_ms": round(mq_duration_ms, 3),
+                    "duracion_mq_ms": round(mq_duration_ms, 3),
                 },
             )
 
@@ -168,9 +200,10 @@ class LocalUploadService:
 
             total_db_ms = round(flush_duration_ms + db_commit_duration_ms, 3)
             logger.info(
-                "DB timing",
+                "Transacción en BD completada",
                 extra={
                     "video_id": str(video.id),
+                    "correlation_id": correlation_id,
                     "db_flush_ms": round(flush_duration_ms, 3),
                     "db_commit_ms": round(db_commit_duration_ms, 3),
                     "db_total_ms": total_db_ms,
@@ -182,13 +215,26 @@ class LocalUploadService:
             video.status = VideoStatus.uploaded
             video.correlation_id = None
             await db.rollback()
-            logger.exception("Upload failed enqueuing message", extra={"video_id": str(video.id), "correlation_id": correlation_id})
+            logger.exception(
+                "Error encolando mensaje en MQ",
+                extra={"video_id": str(video.id), "correlation_id": correlation_id},
+            )
             raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
-        logger.info("Upload completed", extra={"video_id": str(video.id), "correlation_id": correlation_id, "user_id": user_id})
+        logger.info(
+            "Saliendo de LocalUploadService.upload",
+            extra={"video_id": str(video.id), "correlation_id": correlation_id, "usuario": user_id},
+        )
         return video, correlation_id
 
-    def _validate_ext_and_size(self, file: UploadFile):
+    def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
+        try:
+            logger.info(
+                "Entrando a validación de extensión y tamaño",
+                extra={"correlation_id": correlation_id, "archivo": getattr(file, "filename", None)},
+            )
+        except Exception:
+            pass
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")
         allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
@@ -205,4 +251,11 @@ class LocalUploadService:
                 status_code=413,
                 detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.",
             )
+        try:
+            logger.info(
+                "Saliendo de validación de extensión y tamaño",
+                extra={"correlation_id": correlation_id, "tamano_bytes": size_bytes, "extension": ext},
+            )
+        except Exception:
+            pass
         return ext, size_bytes

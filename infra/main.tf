@@ -783,6 +783,11 @@ resource "aws_launch_template" "core_lt" {
 
   vpc_security_group_ids = [aws_security_group.core.id]
 
+  # Métricas detalladas de EC2 a 1 minuto para reacciones más rápidas
+  monitoring {
+    enabled = true
+  }
+
   user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "core",
     repo_url              = var.repo_url,
@@ -834,7 +839,23 @@ resource "aws_autoscaling_group" "core" {
   max_size                  = 3
   vpc_zone_identifier       = [local.subnet_id]
   health_check_type         = "ELB"
-  health_check_grace_period = 300
+  health_check_grace_period = 120
+  # Reducir tiempo entre decisiones del ASG y warmup para TargetTracking
+  default_cooldown        = 120
+  default_instance_warmup = 120
+
+  # Publicar métricas del grupo a 1 minuto para mejor visibilidad
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupStandbyInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances"
+  ]
   target_group_arns         = [aws_lb_target_group.tg_api.arn]
 
   launch_template {

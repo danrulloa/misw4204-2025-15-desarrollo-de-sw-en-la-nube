@@ -4,6 +4,8 @@ Endpoints para subir, listar, consultar y eliminar videos
 """
 
 from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request
+import logging
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 import os, jwt
 from app.database import get_session
@@ -24,6 +26,7 @@ from app.schemas.video import (
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
 _bearer = HTTPBearer(auto_error=True)
+log = logging.getLogger("anb.api.videos")
 
 def _current_user_id(creds: HTTPAuthorizationCredentials) -> str:
     try:
@@ -68,25 +71,55 @@ async def upload_video(
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> VideoUploadResponse:
+    # Correlation: primero en el recorrido
+    correlation_id = request.headers.get("x-correlation-id") or f"corr-{uuid.uuid4().hex[:12]}"
+
     user_id = _current_user_id(creds)
     user_info = _get_user_from_request(request)
 
     service: UploadServicePort = get_upload_service()
-    # Sin tracing: ejecutar el flujo directamente
+    # Logs de entrada
+    try:
+        log.info(
+            "Entrando a upload_video",
+            extra={
+                "correlation_id": correlation_id,
+                "usuario": user_id,
+                "titulo": title,
+                "archivo": getattr(video_file, "filename", None),
+            },
+        )
+    except Exception:
+        pass
+
+    # Ejecutar el flujo, propagando correlation_id
     video, correlation_id = await service.upload(
         user_id=user_id,
         title=title,
         upload_file=video_file,
         user_info=user_info,
         db=db,
+        correlation_id=correlation_id,
     )
 
     response.headers["Location"] = f"/api/videos/{video.id}"
-    return VideoUploadResponse(
+    result = VideoUploadResponse(
         message="Video subido correctamente. Procesamiento en curso.",
         video_id=str(video.id),
         task_id=correlation_id,
     )
+    # Logs de salida
+    try:
+        log.info(
+            "Saliendo de upload_video",
+            extra={
+                "correlation_id": correlation_id,
+                "video_id": str(video.id),
+            },
+        )
+    except Exception:
+        pass
+    return result
 
 
 @router.get(
