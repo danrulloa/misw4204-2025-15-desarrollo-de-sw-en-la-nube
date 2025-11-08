@@ -30,7 +30,15 @@ class LocalUploadService:
             if process_inline is not None
             else getattr(settings, "UPLOAD_SYNC_PIPELINE", False)
         )
-        root = staging_root or Path(getattr(settings, "UPLOAD_STAGING_DIR", "/tmp/anb_staging"))
+        root = staging_root
+        if root is None:
+            env_path = getattr(settings, "UPLOAD_STAGING_DIR", None)
+            if env_path:
+                root = Path(env_path)
+            else:
+                import tempfile
+
+                root = Path(tempfile.gettempdir()) / "anb_staging"
         self._staging_root = root
         try:
             self._staging_root.mkdir(parents=True, exist_ok=True)
