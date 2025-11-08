@@ -62,9 +62,9 @@ if [ -z "$alb_dns" ]; then
 fi
 LOKI_URL_VALUE="http://$alb_dns/loki/api/v1/push"
 
-# Requerir bucket S3 siempre (no hay almacenamiento local)
+# Requerir bucket S3 siempre
 if [ -z "$s3_bucket" ]; then
-  echo "ERROR: s3_bucket no está definido y el almacenamiento local ya no está soportado." >&2
+  echo "ERROR: s3_bucket no está definido (S3 es obligatorio)." >&2
   exit 1
 fi
 
@@ -112,7 +112,6 @@ AWS_PROFILE=${aws_profile}
 %{ endif ~}
 AWS_REGION=${aws_region}
 AWS_SDK_LOAD_CONFIG=1
-STORAGE_BACKEND=s3
 S3_BUCKET=${s3_bucket}
 S3_REGION=${aws_region}
 S3_PREFIX=uploads

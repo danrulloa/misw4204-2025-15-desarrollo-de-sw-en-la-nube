@@ -134,7 +134,7 @@ Cuando el worker recibe una tarea, primero descarga el video original desde S3 a
 
 El script de user-data (`userdata.sh.tftpl`) fue actualizado para inyectar dinámicamente los endpoints de RDS, el nombre del bucket S3 y las credenciales AWS en el archivo `.env` de cada instancia. Terraform pasa estas variables como template variables, permitiendo que cada instancia se configure automáticamente sin intervención manual.
 
-Las instancias del Core API reciben `DATABASE_URL` apuntando a anb-core-rds, `STORAGE_BACKEND=s3`, `S3_BUCKET` con el nombre del bucket, y las credenciales AWS temporales. El Auth Service recibe configuración similar pero apuntando a anb-auth-rds. El Worker recibe endpoints tanto de RDS como de S3 para leer metadatos y gestionar archivos.
+Las instancias del Core API reciben `DATABASE_URL` apuntando a anb-core-rds, `S3_BUCKET` con el nombre del bucket (backend fijo S3) y las credenciales AWS temporales. El Auth Service recibe configuración similar pero apuntando a anb-auth-rds. El Worker recibe endpoints tanto de RDS como de S3 para leer metadatos y gestionar archivos.
 
 ## Cambios Operacionales
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.video import Video, VideoStatus
-from app.services.storage._init_ import get_storage
+from app.services.storage.s3 import S3StorageAdapter
 from app.services.mq.rabbit import RabbitPublisher
 
 import asyncio
@@ -17,6 +17,39 @@ import inspect
 from app.services.storage.executors import get_io_executor
 
 logger = logging.getLogger("anb.uploads")
+
+
+class _LazyS3Storage:
+    """Instancia perezosa de S3 para evitar inicializar en import.
+
+    Se crea el adapter real en el primer uso (save). Siempre usa S3.
+    """
+
+    def __init__(self) -> None:
+        self._adapter: S3StorageAdapter | None = None
+
+    def _ensure(self) -> S3StorageAdapter:
+        if self._adapter is None:
+            self._adapter = S3StorageAdapter(
+                bucket=settings.S3_BUCKET,
+                prefix=settings.S3_PREFIX,
+                region=settings.S3_REGION,
+                endpoint_url=settings.S3_ENDPOINT_URL or None,
+                force_path_style=settings.S3_FORCE_PATH_STYLE,
+                verify_ssl=settings.S3_VERIFY_SSL,
+                access_key_id=settings.AWS_ACCESS_KEY_ID,
+                secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                session_token=settings.AWS_SESSION_TOKEN,
+            )
+        return self._adapter
+
+    # Cumple el contrato de StoragePort
+    def save(self, fileobj, filename, content_type) -> str:  # type: ignore[override]
+        return self._ensure().save(fileobj, filename, content_type)
+
+
+# S3 como backend fijo (perezoso para no fallar al importar si faltan vars)
+STORAGE = _LazyS3Storage()
 
 
 class LocalUploadService:
@@ -40,8 +73,8 @@ class LocalUploadService:
 
         ext, size_bytes = self._validate_ext_and_size(upload_file, correlation_id=correlation_id)
 
-        logger.info("Obtiene el storage %s", correlation_id)
-        storage = get_storage()
+        logger.info("Usando almacenamiento S3 preconfigurado %s", correlation_id)
+        storage = STORAGE
 
         logger.info("Obtenido el storage %s", correlation_id)
         filename = f"{uuid.uuid4().hex}.{ext}"
@@ -99,17 +132,12 @@ class LocalUploadService:
         logger.info("termina a guardar en DB con flush %s", correlation_id)
 
 
-        logger.info("Obtiene el key de almacenamiento %s", correlation_id)
-        # Generar input_path según el backend de almacenamiento
-        if settings.STORAGE_BACKEND == "s3":
-            # Para S3: generar ruta completa s3://bucket/key
-            # saved_rel_path es como "/uploads/2025/11/02/uuid.mp4"
-            # Necesitamos s3://bucket/uploads/2025/11/02/uuid.mp4
-            s3_key = saved_rel_path.lstrip("/")  # "uploads/2025/11/02/uuid.mp4"
-            input_path = f"s3://{settings.S3_BUCKET}/{s3_key}"
-        else:
-            # Local: mantener comportamiento actual
-            input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
+        logger.info("Construyendo key S3 de almacenamiento %s", correlation_id)
+        # Siempre S3: generar ruta completa s3://bucket/key
+        # saved_rel_path es como "/uploads/2025/11/02/uuid.mp4"
+        # Necesitamos s3://bucket/uploads/2025/11/02/uuid.mp4
+        s3_key = saved_rel_path.lstrip("/")  # "uploads/2025/11/02/uuid.mp4"
+        input_path = f"s3://{settings.S3_BUCKET}/{s3_key}"
 
         logger.info("Termina el key de almacenamiento %s", correlation_id)
 

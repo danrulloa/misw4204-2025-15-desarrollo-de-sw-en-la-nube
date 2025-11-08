@@ -3,10 +3,7 @@ import uuid
 from datetime import datetime
 from typing import BinaryIO, Optional
 
-from app.services.storage.base import StoragePort
-
-
-class S3StorageAdapter(StoragePort):
+class S3StorageAdapter:
     def __init__(
         self,
         bucket: str,

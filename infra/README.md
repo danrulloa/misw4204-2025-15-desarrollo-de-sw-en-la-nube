@@ -83,7 +83,7 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 
 El script de user-data ahora:
 - Detecta si hay endpoints RDS configurados y los usa en lugar de la instancia DB local
-- Configura `STORAGE_BACKEND=s3` si se proporciona `s3_bucket`
+<!-- STORAGE_BACKEND eliminado: siempre S3 -->
 - Incluye configuración de S3 (bucket, region, prefixes)
 - Pasa el DNS del ALB para configuración de Loki
 - Hace checkout de la rama especificada en `repo_branch`
@@ -551,10 +551,10 @@ docker compose -f docker-compose.multihost.yml logs --tail=50 anb_api
 **Verificar configuración (.env):**
 ```bash
 # En instancia Core
-cat /opt/anb-cloud/.env | grep -E "DB_URL|S3_BUCKET|STORAGE_BACKEND"
+cat /opt/anb-cloud/.env | grep -E "DB_URL|S3_BUCKET"
 # Debe mostrar:
 # DATABASE_URL=postgresql+asyncpg://anb_user:...@anb-core-rds.xxxxx.rds.amazonaws.com:5432/anb_core
-# STORAGE_BACKEND=s3 (si S3 está configurado)
+# (STORAGE_BACKEND eliminado — backend fijo S3)
 # S3_BUCKET=anb-basketball-bucket-xxxxx
 ```
 
@@ -610,7 +610,6 @@ POSTGRES_CORE_DB=anb_core
 POSTGRES_AUTH_DB=anb_auth
 
 # S3 Configuration (obtener desde: terraform output s3_bucket_name)
-STORAGE_BACKEND=s3
 S3_BUCKET=anb-basketball-bucket-xxxxx  # Reemplazar con tu bucket
 S3_REGION=us-east-1
 S3_PREFIX=uploads
@@ -654,7 +653,6 @@ APP_ENV=production
 ROLE=worker
 
 # S3 Configuration (mismo bucket que Core)
-STORAGE_BACKEND=s3
 S3_BUCKET=anb-basketball-bucket-xxxxx  # Reemplazar con tu bucket
 S3_REGION=us-east-1
 S3_PREFIX=uploads
@@ -903,7 +901,7 @@ Pero para evitar costos de RDS, es mejor destruir todo con `terraform destroy`.
 ### Problemas con S3
 
 **Videos no se suben a S3**
-- Verifica que `STORAGE_BACKEND=s3` en el `.env` de Core
+- Verifica que `S3_BUCKET` está presente en el `.env` de Core (STORAGE_BACKEND ya no existe)
 - Verifica que `S3_BUCKET` esté configurado correctamente
 - Verifica permisos IAM: AWS Console → IAM → Roles → LabRole → Debe tener permisos `s3:PutObject`, `s3:GetObject`
 

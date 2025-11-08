@@ -82,8 +82,9 @@ def _make_file(name: str = "clip.mp4", data: bytes = b"video") -> UploadFile:
 def service(monkeypatch):
     monkeypatch.setattr(uploads_local.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})
     monkeypatch.setattr(uploads_local.settings, "MAX_UPLOAD_SIZE_MB", 100)
-    monkeypatch.setattr(uploads_local.settings, "WORKER_INPUT_PREFIX", "/worker/in")
-    monkeypatch.setattr(uploads_local.settings, "STORAGE_BACKEND", "local")
+    # S3 config de pruebas (no se usa realmente porque se parchea STORAGE)
+    monkeypatch.setattr(uploads_local.settings, "S3_BUCKET", "test-bucket")
+    monkeypatch.setattr(uploads_local.settings, "S3_PREFIX", "uploads")
     return LocalUploadService()
 
 
@@ -91,7 +92,8 @@ def service(monkeypatch):
 async def test_upload_service_happy_path(service, monkeypatch):
     storage = _StubStorage()
     publisher = _StubPublisher()
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    # Parchea el STORAGE fijo del módulo a nuestro stub
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: publisher)
 
     db = _StubSession()
@@ -121,7 +123,7 @@ async def test_upload_service_happy_path(service, monkeypatch):
 
     assert publisher.payload == {
         "video_id": str(video.id),
-        "input_path": video.original_path.replace("/uploads", "/worker/in", 1),
+        "input_path": f"s3://{uploads_local.settings.S3_BUCKET}/{video.original_path.lstrip('/')}",
         "correlation_id": correlation,
     }
     assert publisher.closed is True
@@ -131,7 +133,7 @@ async def test_upload_service_happy_path(service, monkeypatch):
 async def test_upload_service_storage_failure(service, monkeypatch):
     storage_error = RuntimeError("disk full")
     storage = _StubStorage(should_fail=storage_error)
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
 
     db = _StubSession()
@@ -155,7 +157,7 @@ async def test_upload_service_storage_failure(service, monkeypatch):
 async def test_upload_service_mq_failure_reverts(service, monkeypatch):
     storage = _StubStorage()
     failing_pub = _StubPublisher(should_fail=RuntimeError("mq down"))
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: failing_pub)
 
     db = _StubSession()
@@ -181,7 +183,7 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
 @pytest.mark.asyncio
 async def test_upload_service_bad_extension(service, monkeypatch):
     storage = _StubStorage()
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
 
     db = _StubSession()
