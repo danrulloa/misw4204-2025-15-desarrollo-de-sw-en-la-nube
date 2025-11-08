@@ -73,17 +73,11 @@ async def upload_video(
     log.info("Entrando a /upload: " + title)
     # Correlation: primero en el recorrido
     correlation_id = request.headers.get("x-correlation-id") or f"corr-{uuid.uuid4().hex[:12]}"
-
-    log.info("Entrando a _current_user_id: " + correlation_id)
     user_id = _current_user_id(creds)
-    log.info("Completado _current_user_id: " + correlation_id)
-    log.info("Entrando a _get_user_from_request: " + correlation_id)
     user_info = _get_user_from_request(request)
-    log.info("Completado _get_user_from_request: " + correlation_id)
 
-    log.info("Obtiene que servicio de upload usar: " + correlation_id)
     service: UploadServicePort = get_upload_service()
-    log.info("llama al upload desde video: " + correlation_id)
+    
     # Ejecutar el flujo, propagando correlation_id
     video, correlation_id = await service.upload(
         user_id=user_id,

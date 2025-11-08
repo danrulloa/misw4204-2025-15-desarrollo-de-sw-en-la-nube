@@ -42,16 +42,24 @@ class LocalUploadService:
 
         logger.info("Obtiene el storage %s", correlation_id)
         storage = get_storage()
+
+        logger.info("Obtenido el storage %s", correlation_id)
         filename = f"{uuid.uuid4().hex}.{ext}"
 
         # STORAGE PHASE
         try:
 
+            logger.info("Llama al get attribute con: %s", correlation_id)
             # StoragePort.save es síncrono por contrato: ejecútalo en el pool I/O dedicado
             save_fn = getattr(storage, "save")
-            loop = asyncio.get_running_loop()
-            
 
+            logger.info("Obtiene al get attribute con: %s", correlation_id)
+
+            logger.info("Llama al loop con: %s", correlation_id)
+            loop = asyncio.get_running_loop()
+
+            logger.info("Llamó al loop con: %s", correlation_id)
+            
             logger.info("Guardando archivo en almacenamiento %s", correlation_id)
 
          

@@ -32,6 +32,9 @@ class KeyValueExtraFormatter(logging.Formatter):
         "processName",
         "process",
         "message",
+        # Asyncio-specific noisy fields
+        "taskName",
+        "task",
     }
 
     def _quote(self, value: Any) -> str:
