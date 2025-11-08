@@ -9,7 +9,6 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 import os, jwt
 from app.database import get_session
-from app.models.video import Video
 from app.services.uploads._init_ import get_upload_service
 from app.services.uploads.base import UploadServicePort
 from app.services.videos._init_ import get_video_query_service
@@ -71,23 +70,20 @@ async def upload_video(
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> VideoUploadResponse:
+    log.info("Entrando a /upload: " + title)
     # Correlation: primero en el recorrido
     correlation_id = request.headers.get("x-correlation-id") or f"corr-{uuid.uuid4().hex[:12]}"
 
+    log.info("Entrando a _current_user_id: " + correlation_id)
     user_id = _current_user_id(creds)
+    log.info("Completado _current_user_id: " + correlation_id)
+    log.info("Entrando a _get_user_from_request: " + correlation_id)
     user_info = _get_user_from_request(request)
+    log.info("Completado _get_user_from_request: " + correlation_id)
 
+    log.info("Obtiene que servicio de upload usar: " + correlation_id)
     service: UploadServicePort = get_upload_service()
-    # Log de entrada
-    log.info(
-        "Entrando a upload_video",
-        extra={
-            "correlation_id": correlation_id,
-            "usuario": user_id,
-            "titulo": title,
-        },
-    )
-
+    log.info("llama al upload desde video: " + correlation_id)
     # Ejecutar el flujo, propagando correlation_id
     video, correlation_id = await service.upload(
         user_id=user_id,
@@ -97,7 +93,7 @@ async def upload_video(
         db=db,
         correlation_id=correlation_id,
     )
-
+    log.info("Salió del upload y prepara la respuesta: " + correlation_id)
     response.headers["Location"] = f"/api/videos/{video.id}"
     result = VideoUploadResponse(
         message="Video subido correctamente. Procesamiento en curso.",
@@ -105,13 +101,7 @@ async def upload_video(
         task_id=correlation_id,
     )
     # Log de salida
-    log.info(
-        "Saliendo de upload_video",
-        extra={
-            "correlation_id": correlation_id,
-            "video_id": str(video.id),
-        },
-    )
+    log.info("Ultima linea: " + correlation_id)
     return result
 
 

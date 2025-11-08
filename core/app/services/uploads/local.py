@@ -19,9 +19,6 @@ from app.services.storage.executors import get_io_executor
 logger = logging.getLogger("anb.uploads")
 
 
- 
-
-
 class LocalUploadService:
     """Implementación local del servicio de subida de videos.
 
@@ -39,36 +36,25 @@ class LocalUploadService:
         correlation_id: str,
     ) -> Tuple[Video, str]:
         # Log de entrada
-        logger.info(
-            "Entrando a LocalUploadService.upload",
-            extra={
-                "correlation_id": correlation_id,
-                "usuario": user_id,
-                "titulo": title,
-            },
-        )
-
-        # Start reception timer (monotonic)
-        recv_start_perf = time.perf_counter()
+        logger.info("Entrando a LocalUploadService.upload %s", correlation_id)
 
         ext, size_bytes = self._validate_ext_and_size(upload_file, correlation_id=correlation_id)
 
+        logger.info("Obtiene el storage %s", correlation_id)
         storage = get_storage()
         filename = f"{uuid.uuid4().hex}.{ext}"
 
         # STORAGE PHASE
         try:
-            # Measure storage upload time
-            storage_start_perf = time.perf_counter()
 
             # StoragePort.save es síncrono por contrato: ejecútalo en el pool I/O dedicado
             save_fn = getattr(storage, "save")
             loop = asyncio.get_running_loop()
-            # Log entrada a almacenamiento
-            logger.info(
-                "Guardando archivo en almacenamiento",
-                extra={"correlation_id": correlation_id},
-            )
+            
+
+            logger.info("Guardando archivo en almacenamiento %s", correlation_id)
+
+         
             saved_rel_path = await loop.run_in_executor(
                 get_io_executor(),
                 save_fn,
@@ -76,33 +62,14 @@ class LocalUploadService:
                 filename,
                 upload_file.content_type or "application/octet-stream",
             )
-            # Log salida de almacenamiento
-            logger.info(
-                "Archivo guardado en almacenamiento",
-                extra={"correlation_id": correlation_id, "ruta": saved_rel_path},
-            )
 
-            storage_end_perf = time.perf_counter()
-
-            storage_duration_ms = (storage_end_perf - storage_start_perf) * 1000.0
-            recv_duration_ms = (storage_start_perf - recv_start_perf) * 1000.0
-
-            logger.info(
-                "Upload phases timing",
-                extra={
-                    "user_id": user_id,
-                    "reception_ms": round(recv_duration_ms, 3),
-                    "storage_ms": round(storage_duration_ms, 3),
-                },
-            )
+            logger.info("Completa el guardado del archivo en almacenamiento %s", correlation_id)
 
         except Exception as e:
-            logger.exception(
-                "Error guardando archivo en almacenamiento",
-                extra={"correlation_id": correlation_id, "usuario": user_id, "titulo": title},
-            )
+            logger.info("Error el guardado del archivo en almacenamiento %s %s", correlation_id, e)
             raise HTTPException(status_code=502, detail=f"Error guardando archivo en storage: {e}")
 
+        logger.info("Empieza la creación del objeto Video %s", correlation_id)
         video = Video(
             user_id=user_id,
             title=title,
@@ -113,15 +80,18 @@ class LocalUploadService:
             player_first_name=user_info.get("first_name", ""),
             player_last_name=user_info.get("last_name", ""),
             player_city=user_info.get("city", ""),
+            correlation_id=correlation_id
         )
+        logger.info("empieza a guardar en DB %s", correlation_id)
         db.add(video)
 
-        # Measure flush (part of DB persist)
-        flush_start_perf = time.perf_counter()
+  
         await db.flush()  # Flush para obtener ID sin commit
-        flush_end_perf = time.perf_counter()
-        flush_duration_ms = (flush_end_perf - flush_start_perf) * 1000.0
+        
+        logger.info("termina a guardar en DB con flush %s", correlation_id)
 
+
+        logger.info("Obtiene el key de almacenamiento %s", correlation_id)
         # Generar input_path según el backend de almacenamiento
         if settings.STORAGE_BACKEND == "s3":
             # Para S3: generar ruta completa s3://bucket/key
@@ -132,11 +102,13 @@ class LocalUploadService:
         else:
             # Local: mantener comportamiento actual
             input_path = saved_rel_path.replace("/uploads", settings.WORKER_INPUT_PREFIX, 1)
-        
-    # Actualizar correlation_id y status antes de encolar
-        video.correlation_id = correlation_id
+
+        logger.info("Termina el key de almacenamiento %s", correlation_id)
+
+    
         video.status = VideoStatus.processing
 
+        logger.info("empieza a enviar en MQ %s", correlation_id)
         # MQ PHASE
         try:
             mq_start_perf = time.perf_counter()
@@ -172,55 +144,26 @@ class LocalUploadService:
             mq_end_perf = time.perf_counter()
             mq_duration_ms = (mq_end_perf - mq_start_perf) * 1000.0
 
-            logger.info(
-                "Publicación en MQ completada",
-                extra={
-                    "video_id": str(video.id),
-                    "correlation_id": correlation_id,
-                    "duracion_mq_ms": round(mq_duration_ms, 3),
-                },
-            )
-
-            # DB commit (persist) - measure commit duration
-            db_commit_start_perf = time.perf_counter()
+            logger.info("Publicación en MQ completada %s", correlation_id)
             await db.commit()
-            db_commit_end_perf = time.perf_counter()
-            db_commit_duration_ms = (db_commit_end_perf - db_commit_start_perf) * 1000.0
+            logger.info("Commit en DB completado %s", correlation_id)
 
-            total_db_ms = round(flush_duration_ms + db_commit_duration_ms, 3)
-            logger.info(
-                "Transacción en BD completada",
-                extra={
-                    "video_id": str(video.id),
-                    "correlation_id": correlation_id,
-                    "db_flush_ms": round(flush_duration_ms, 3),
-                    "db_commit_ms": round(db_commit_duration_ms, 3),
-                    "db_total_ms": total_db_ms,
-                },
-            )
 
         except Exception as e:
             # Si falla el encolado, revertir a uploaded para permitir reintento
             video.status = VideoStatus.uploaded
             video.correlation_id = None
             await db.rollback()
-            logger.exception(
-                "Error encolando mensaje en MQ",
-                extra={"video_id": str(video.id), "correlation_id": correlation_id},
-            )
+            logger.exception("Error encolando mensaje en MQ %s %s", correlation_id, e)
             raise HTTPException(status_code=502, detail=f"No se pudo encolar el procesamiento: {e}")
 
-        logger.info(
-            "Saliendo de LocalUploadService.upload",
-            extra={"video_id": str(video.id), "correlation_id": correlation_id, "usuario": user_id},
-        )
+        logger.info("Saliendo de LocalUploadService.upload %s", correlation_id)
         return video, correlation_id
 
     def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
-        logger.info(
-            "Entrando a validación de extensión y tamaño",
-            extra={"correlation_id": correlation_id},
-        )
+
+        logger.info("Entrando a LocalUploadService.upload %s", correlation_id)
+
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")
         allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
@@ -237,8 +180,5 @@ class LocalUploadService:
                 status_code=413,
                 detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.",
             )
-        logger.info(
-            "Saliendo de validación de extensión y tamaño",
-            extra={"correlation_id": correlation_id, "tamano_bytes": size_bytes, "extension": ext},
-        )
+        logger.info("Saliendo de la validación de extensión y tamaño %s", correlation_id)
         return ext, size_bytes

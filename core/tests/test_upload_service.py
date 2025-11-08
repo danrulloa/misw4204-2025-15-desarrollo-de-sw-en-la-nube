@@ -103,6 +103,7 @@ async def test_upload_service_happy_path(service, monkeypatch):
         upload_file=_make_file(),
         user_info=user_info,
         db=db,
+        correlation_id="test-corr-1",
     )
 
     assert len(storage.calls) == 1
@@ -141,6 +142,7 @@ async def test_upload_service_storage_failure(service, monkeypatch):
             upload_file=_make_file(),
             user_info={},
             db=db,
+            correlation_id="test-corr-2",
         )
 
     assert exc.value.status_code == 502
@@ -164,6 +166,7 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
             upload_file=_make_file(),
             user_info={},
             db=db,
+            correlation_id="test-corr-3",
         )
 
     assert exc.value.status_code == 502
@@ -191,6 +194,7 @@ async def test_upload_service_bad_extension(service, monkeypatch):
             upload_file=bad_file,
             user_info={},
             db=db,
+            correlation_id="test-corr-4",
         )
 
     assert exc.value.status_code == 400
