@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Dict, Tuple
 import time
+import tempfile
+import shutil
 
 from fastapi import HTTPException, UploadFile, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,7 +89,7 @@ class LocalUploadService:
             size_bytes,
         )
 
-        # Precomputar key S3 para responder sin esperar el upload
+    # Precomputar key S3 para responder sin esperar el upload
         today = datetime.utcnow()
         day_dir = f"{today:%Y}/{today:%m}/{today:%d}"
         basename = f"{uuid.uuid4().hex}.{ext}"
@@ -121,6 +123,24 @@ class LocalUploadService:
 
         input_path = f"s3://{settings.S3_BUCKET}/{s3_key}"  # pasado al worker
 
+        # Copiar contenido a un archivo temporal para evitar 'seek of closed file' en background
+        tmp_t0 = time.perf_counter()
+        upload_file.file.seek(0)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+        try:
+            shutil.copyfileobj(upload_file.file, tmp)
+        finally:
+            tmp.close()
+        tmp_path = tmp.name
+        tmp_ms = (time.perf_counter() - tmp_t0) * 1000.0
+        logger.info(
+            "upload:temp:copied corr=%s path=%s size_bytes=%s elapsed_ms=%.1f",
+            correlation_id,
+            tmp_path,
+            size_bytes,
+            tmp_ms,
+        )
+
         # Programar procesamiento en background (obligatorio)
         if background_tasks is None:
             logger.error(
@@ -131,7 +151,7 @@ class LocalUploadService:
 
         background_tasks.add_task(
             self._background_pipeline,
-            upload_file,
+            tmp_path,
             s3_key,
             str(video.id),
             input_path,
@@ -169,7 +189,7 @@ class LocalUploadService:
 
     def _background_pipeline(
         self,
-        upload_file: UploadFile,
+        tmp_path: str,
         s3_key: str,
         video_id: str,
         input_path: str,
@@ -187,7 +207,8 @@ class LocalUploadService:
             )
             # Subir a S3
             s3_t0 = time.perf_counter()
-            STORAGE.save_with_key(upload_file.file, s3_key, content_type)
+            with open(tmp_path, "rb") as f:
+                STORAGE.save_with_key(f, s3_key, content_type)
             s3_ms = (time.perf_counter() - s3_t0) * 1000.0
             logger.info(
                 "bg:s3:uploaded corr=%s key=%s elapsed_ms=%.1f",
@@ -224,3 +245,9 @@ class LocalUploadService:
             )
         except Exception as e:
             logger.exception("bg:error corr=%s err=%s", correlation_id, e)
+        finally:
+            try:
+                os.remove(tmp_path)
+                logger.info("bg:temp:removed corr=%s path=%s", correlation_id, tmp_path)
+            except Exception:
+                logger.warning("bg:temp:remove_failed corr=%s path=%s", correlation_id, tmp_path)
