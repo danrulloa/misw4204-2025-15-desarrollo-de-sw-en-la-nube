@@ -24,7 +24,12 @@ logger = logging.getLogger("anb.uploads")
 class LocalUploadService:
     """Implementacion local del servicio de subida de videos."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, process_inline: bool | None = None) -> None:
+        self._process_inline = (
+            process_inline
+            if process_inline is not None
+            else getattr(settings, "UPLOAD_SYNC_PIPELINE", False)
+        )
         self._staging_root = Path(getattr(settings, "UPLOAD_STAGING_DIR", "/tmp/anb_staging"))
         try:
             self._staging_root.mkdir(parents=True, exist_ok=True)
@@ -64,7 +69,7 @@ class LocalUploadService:
             extra={"video_id": str(video.id), "correlation_id": correlation_id, "user_id": user_id},
         )
 
-        self._schedule_background_pipeline(  # REF3
+        pipeline_kwargs = dict(
             video_id=video.id,
             correlation_id=correlation_id,
             staging_path=staging_path,
@@ -72,6 +77,10 @@ class LocalUploadService:
             content_type=upload_file.content_type or "application/octet-stream",
             flush_duration_ms=flush_duration_ms,
         )
+        if self._process_inline:
+            await self._process_pipeline(**pipeline_kwargs)
+        else:
+            self._schedule_background_pipeline(**pipeline_kwargs)  # REF3
 
         return video, correlation_id
 

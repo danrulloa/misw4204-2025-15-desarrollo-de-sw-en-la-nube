@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/app/storage/uploads")
     PROCESSED_DIR: str = os.getenv("PROCESSED_DIR", "/app/storage/processed")
     UPLOAD_STAGING_DIR: str = os.getenv("UPLOAD_STAGING_DIR", "/tmp/anb_staging")
+    UPLOAD_SYNC_PIPELINE: bool = bool(int(os.getenv("UPLOAD_SYNC_PIPELINE", "0")))
     PUBLIC_BASE_URL: str | None = os.getenv("PUBLIC_BASE_URL") or None
 
     # Configuración de base de datos
