@@ -130,7 +130,7 @@ variable "instance_type_mq" {
 }
 variable "instance_type_worker" {
   type    = string
-  default = "t3.large"
+  default = "t3.small"
 }
 variable "instance_type_obs" {
   type    = string
