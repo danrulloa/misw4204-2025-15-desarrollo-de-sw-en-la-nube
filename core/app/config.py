@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Rutas de almacenamiento
     UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/app/storage/uploads")
     PROCESSED_DIR: str = os.getenv("PROCESSED_DIR", "/app/storage/processed")
+    UPLOAD_STAGING_DIR: str = os.getenv("UPLOAD_STAGING_DIR", "/tmp/anb_staging")
     PUBLIC_BASE_URL: str | None = os.getenv("PUBLIC_BASE_URL") or None
 
     # Configuración de base de datos
