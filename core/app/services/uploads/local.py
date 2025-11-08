@@ -45,7 +45,6 @@ class LocalUploadService:
                 "correlation_id": correlation_id,
                 "usuario": user_id,
                 "titulo": title,
-                "archivo_nombre": getattr(upload_file, "filename", None),
             },
         )
 
@@ -68,7 +67,7 @@ class LocalUploadService:
             # Log entrada a almacenamiento
             logger.info(
                 "Guardando archivo en almacenamiento",
-                extra={"correlation_id": correlation_id, "archivo_nombre": filename},
+                extra={"correlation_id": correlation_id},
             )
             saved_rel_path = await loop.run_in_executor(
                 get_io_executor(),
@@ -92,7 +91,6 @@ class LocalUploadService:
                 "Upload phases timing",
                 extra={
                     "user_id": user_id,
-                    "filename": filename,
                     "reception_ms": round(recv_duration_ms, 3),
                     "storage_ms": round(storage_duration_ms, 3),
                 },
@@ -221,7 +219,7 @@ class LocalUploadService:
     def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
         logger.info(
             "Entrando a validación de extensión y tamaño",
-            extra={"correlation_id": correlation_id, "archivo_nombre": getattr(file, "filename", None)},
+            extra={"correlation_id": correlation_id},
         )
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")

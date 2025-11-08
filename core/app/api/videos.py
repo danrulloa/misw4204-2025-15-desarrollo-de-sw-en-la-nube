@@ -85,7 +85,6 @@ async def upload_video(
             "correlation_id": correlation_id,
             "usuario": user_id,
             "titulo": title,
-            "archivo_nombre": getattr(video_file, "filename", None),
         },
     )
 

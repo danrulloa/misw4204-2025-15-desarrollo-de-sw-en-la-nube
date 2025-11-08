@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import logging
-from logging import StreamHandler, Formatter
+from logging import StreamHandler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
@@ -18,6 +18,7 @@ from app.exceptions import (
     general_exception_handler,
 )
 from app.observability.logging_filters import install_uvicorn_access_filter
+from app.observability.log_formatters import KeyValueExtraFormatter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,21 +33,14 @@ async def lifespan(app: FastAPI):
 # Instala un filtro para suprimir logs de acceso de /health y /metrics
 install_uvicorn_access_filter()
 
-# Asegura que los logs de la app (anb.*) se vean a nivel INFO usando el handler de Uvicorn
-_uvicorn_err_logger = logging.getLogger("uvicorn.error")
+# Configura 'anb' para emitir extra fields como key=value, visible en Loki/Promtail
 _app_base_logger = logging.getLogger("anb")
-if _uvicorn_err_logger.handlers:
-    # Reutiliza los handlers de Uvicorn si ya están disponibles
-    _app_base_logger.handlers = _uvicorn_err_logger.handlers
-    _app_base_logger.setLevel(logging.INFO)
-    _app_base_logger.propagate = False
-else:
-    # Fallback: asegura un handler a stdout para 'anb' si Uvicorn aún no configuró logging
-    fallback_handler = StreamHandler()
-    fallback_handler.setFormatter(Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
-    _app_base_logger.addHandler(fallback_handler)
-    _app_base_logger.setLevel(logging.INFO)
-    _app_base_logger.propagate = False
+_app_base_logger.handlers = []  # evitar reutilizar handlers de uvicorn
+kv_handler = StreamHandler()
+kv_handler.setFormatter(KeyValueExtraFormatter())
+_app_base_logger.addHandler(kv_handler)
+_app_base_logger.setLevel(logging.INFO)
+_app_base_logger.propagate = False
 
 app = FastAPI(
     root_path="/api",
