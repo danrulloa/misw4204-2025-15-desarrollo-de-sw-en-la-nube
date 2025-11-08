@@ -72,27 +72,17 @@ class LocalUploadService:
         logger.info("Entrando a LocalUploadService.upload %s", correlation_id)
 
         ext, size_bytes = self._validate_ext_and_size(upload_file, correlation_id=correlation_id)
-
-        logger.info("Usando almacenamiento S3 preconfigurado %s", correlation_id)
         storage = STORAGE
 
-        logger.info("Obtenido el storage %s", correlation_id)
         filename = f"{uuid.uuid4().hex}.{ext}"
 
         # STORAGE PHASE
         try:
 
-            logger.info("Llama al get attribute con: %s", correlation_id)
             # StoragePort.save es síncrono por contrato: ejecútalo en el pool I/O dedicado
             save_fn = getattr(storage, "save")
 
-            logger.info("Obtiene al get attribute con: %s", correlation_id)
-
-            logger.info("Llama al loop con: %s", correlation_id)
             loop = asyncio.get_running_loop()
-
-            logger.info("Llamó al loop con: %s", correlation_id)
-            
             logger.info("Guardando archivo en almacenamiento %s", correlation_id)
 
          
@@ -198,8 +188,6 @@ class LocalUploadService:
 
     def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
 
-        logger.info("Entrando a LocalUploadService.upload %s", correlation_id)
-
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")
         allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
@@ -216,5 +204,4 @@ class LocalUploadService:
                 status_code=413,
                 detail=f"El archivo supera {settings.MAX_UPLOAD_SIZE_MB} MB.",
             )
-        logger.info("Saliendo de la validación de extensión y tamaño %s", correlation_id)
         return ext, size_bytes
