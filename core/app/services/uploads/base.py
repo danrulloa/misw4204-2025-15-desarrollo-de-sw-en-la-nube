@@ -1,6 +1,6 @@
 from typing import Protocol, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import UploadFile
+from fastapi import UploadFile, BackgroundTasks
 
 
 class UploadServicePort(Protocol):
@@ -13,6 +13,7 @@ class UploadServicePort(Protocol):
         user_info: Dict[str, str],
         db: AsyncSession,
         correlation_id: str,
+        background_tasks: BackgroundTasks | None,
     ):
         """
         Orquesta la subida de un video y su encolado para procesamiento.

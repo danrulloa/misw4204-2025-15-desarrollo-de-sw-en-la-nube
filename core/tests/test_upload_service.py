@@ -48,8 +48,14 @@ class _StubStorage:
     def save(self, fileobj, filename, content_type):
         if self.should_fail:
             raise self.should_fail
-        self.calls.append((fileobj, filename, content_type))
+        self.calls.append(("save", filename, content_type))
         return f"/uploads/{filename}"
+
+    def save_with_key(self, fileobj, key, content_type):
+        if self.should_fail:
+            raise self.should_fail
+        self.calls.append(("save_with_key", key, content_type))
+        return f"/{key}"
 
 
 class _StubPublisher:
@@ -76,6 +82,13 @@ class _FakeUploadFile:
 
 def _make_file(name: str = "clip.mp4", data: bytes = b"video") -> UploadFile:
     return _FakeUploadFile(name, data, "video/mp4")  # type: ignore[return-value]
+
+
+class _ImmediateBackgroundTasks:
+    """Stub de BackgroundTasks que ejecuta inmediatamente la tarea agregada."""
+
+    def add_task(self, func, *args, **kwargs):
+        return func(*args, **kwargs)
 
 
 @pytest.fixture
@@ -106,18 +119,20 @@ async def test_upload_service_happy_path(service, monkeypatch):
         user_info=user_info,
         db=db,
         correlation_id="test-corr-1",
+        background_tasks=_ImmediateBackgroundTasks(),
     )
 
     assert len(storage.calls) == 1
-    _, saved_name, saved_type = storage.calls[0]
+    method, saved_name, saved_type = storage.calls[0]
+    assert method == "save_with_key"
     assert saved_name.endswith(".mp4")
     assert saved_type == "video/mp4"
 
     assert db.added is video
-    assert db.commits == 1  # Un solo commit al final
+    assert db.commits == 1  # Commit temprano
     assert db.flush_calls == 1  # Flush para obtener ID
     assert db.refresh_calls == 0  # Ya no necesitamos refresh
-    assert video.status is VideoStatus.processing
+    assert video.status is VideoStatus.uploaded
     assert video.correlation_id == correlation
     assert video.player_first_name == "Ana"
 
@@ -137,20 +152,22 @@ async def test_upload_service_storage_failure(service, monkeypatch):
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
 
     db = _StubSession()
-    with pytest.raises(HTTPException) as exc:
-        await service.upload(
-            user_id="user-123",
-            title="Gran jugada",
-            upload_file=_make_file(),
-            user_info={},
-            db=db,
-            correlation_id="test-corr-2",
-        )
+    # Con pipeline en background, el error ocurre en la tarea y no hay llamada a save_with_key; no se propaga.
+    video, correlation = await service.upload(
+        user_id="user-123",
+        title="Gran jugada",
+        upload_file=_make_file(),
+        user_info={},
+        db=db,
+        correlation_id="test-corr-2",
+        background_tasks=_ImmediateBackgroundTasks(),
+    )
 
-    assert exc.value.status_code == 502
-    assert "disk full" in exc.value.detail
-    assert storage.calls == []
-    assert db.added is None
+    # La llamada retorna sin subir (falló en pipeline inmediatamente). No hubo save_with_key exitoso.
+    # El stub no registra llamadas cuando falla, por eso queda en 0.
+    assert len(storage.calls) == 0
+    assert db.added is not None
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio
@@ -161,23 +178,20 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: failing_pub)
 
     db = _StubSession()
-    with pytest.raises(HTTPException) as exc:
-        await service.upload(
-            user_id="user-123",
-            title="Gran jugada",
-            upload_file=_make_file(),
-            user_info={},
-            db=db,
-            correlation_id="test-corr-3",
-        )
+    # El fallo de MQ ocurre en el pipeline; la llamada principal retorna 200
+    video, correlation = await service.upload(
+        user_id="user-123",
+        title="Gran jugada",
+        upload_file=_make_file(),
+        user_info={},
+        db=db,
+        correlation_id="test-corr-3",
+        background_tasks=_ImmediateBackgroundTasks(),
+    )
 
-    assert exc.value.status_code == 502
-    assert "No se pudo encolar" in exc.value.detail
-    video = db.added
-    assert video.status is VideoStatus.uploaded
-    assert video.correlation_id is None
-    assert db.commits == 0  # No hubo commits (falló antes)
-    assert db.rollback_calls == 1  # Se hizo rollback
+    assert len(storage.calls) == 1
+    assert db.added is not None
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio

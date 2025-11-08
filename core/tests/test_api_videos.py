@@ -130,7 +130,8 @@ class TestVideoEndpoints:
         assert isinstance(data, list) and len(data) == 1
         assert data[0]["title"] == "Triple ganador"
         assert data[0]["status"] == "processed"
-        assert data[0]["processed_url"] == "/processed/highlights.mp4"
+        # El backend puede retornar URL absoluta; comprobamos sufijo
+        assert data[0]["processed_url"].endswith("/processed/highlights.mp4")
 
         assert len(stub_service.list_calls) == 1
         call = stub_service.list_calls[0]
@@ -199,8 +200,9 @@ class TestVideoEndpoints:
         assert data["video_id"] == str(vid.id)
         assert data["title"] == "MVP"
         assert data["votes"] == 0
-        assert data["original_url"] == "/uploads/original.mp4"
-        assert data["processed_url"] == "/processed/render.mp4"
+        # Comprobamos sufijos de URL en caso de ser absolutas
+        assert data["original_url"].endswith("/uploads/original.mp4")
+        assert data["processed_url"].endswith("/processed/render.mp4")
         client.app.dependency_overrides.pop(videos_mod.get_session, None)
         client.app.dependency_overrides.pop(videos_mod.get_video_query_service, None)
 

@@ -93,4 +93,16 @@ class S3StorageAdapter:
         # una ruta lógica con prefijo '/uploads'.
         return f"/{key}"
 
+    def save_with_key(self, fileobj: BinaryIO, key: str, content_type: str) -> str:
+        """Sube usando una key precomputada. Devuelve ruta lógica con '/'."""
+        fileobj.seek(0)
+        self._s3.upload_fileobj(
+            Fileobj=fileobj,
+            Bucket=self.bucket,
+            Key=key,
+            ExtraArgs={"ContentType": content_type or "application/octet-stream"},
+            Config=self._transfer_cfg,
+        )
+        return f"/{key}"
+
     # Nota: ruta única optimizada -> save() síncrono con boto3; no se expone variante async.

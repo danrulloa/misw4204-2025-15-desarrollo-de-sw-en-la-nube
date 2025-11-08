@@ -3,7 +3,7 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request, BackgroundTasks
 import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +65,7 @@ def _get_user_from_request(request: Request) -> dict:
 async def upload_video(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     video_file: UploadFile = File(..., description="Archivo de video"),
     title: str = Form(..., description="Título del video"),
     db: AsyncSession = Depends(get_session),
@@ -86,6 +87,7 @@ async def upload_video(
         user_info=user_info,
         db=db,
         correlation_id=correlation_id,
+        background_tasks=background_tasks,
     )
     log.info("Salió del upload y prepara la respuesta: " + correlation_id)
     response.headers["Location"] = f"/api/videos/{video.id}"
