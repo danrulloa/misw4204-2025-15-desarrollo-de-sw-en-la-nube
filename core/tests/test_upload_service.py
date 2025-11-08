@@ -116,7 +116,7 @@ def _build_service(monkeypatch, tmp_path, *, process_inline: bool, storage_backe
     monkeypatch.setattr(uploads_local.settings, "UPLOAD_STAGING_DIR", tmp_path.as_posix())
     monkeypatch.setattr(uploads_local, "SessionLocal", lambda: _SessionCtx(pipeline_session))
 
-    svc = LocalUploadService(process_inline=process_inline)
+    svc = LocalUploadService(process_inline=process_inline, staging_root=tmp_path)
     svc._test_store = shared_store  # type: ignore[attr-defined]
     svc._test_pipeline_session = pipeline_session  # type: ignore[attr-defined]
     return svc

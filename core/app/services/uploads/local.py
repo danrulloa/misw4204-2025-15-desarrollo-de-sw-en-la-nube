@@ -24,13 +24,14 @@ logger = logging.getLogger("anb.uploads")
 class LocalUploadService:
     """Implementacion local del servicio de subida de videos."""
 
-    def __init__(self, *, process_inline: bool | None = None) -> None:
+    def __init__(self, *, process_inline: bool | None = None, staging_root: Path | None = None) -> None:
         self._process_inline = (
             process_inline
             if process_inline is not None
             else getattr(settings, "UPLOAD_SYNC_PIPELINE", False)
         )
-        self._staging_root = Path(getattr(settings, "UPLOAD_STAGING_DIR", "/tmp/anb_staging"))
+        root = staging_root or Path(getattr(settings, "UPLOAD_STAGING_DIR", "/tmp/anb_staging"))
+        self._staging_root = root
         try:
             self._staging_root.mkdir(parents=True, exist_ok=True)
         except Exception:
