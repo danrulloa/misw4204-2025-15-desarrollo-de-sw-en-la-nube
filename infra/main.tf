@@ -130,7 +130,7 @@ variable "instance_type_mq" {
 }
 variable "instance_type_worker" {
   type    = string
-  default = "t3.small"
+  default = "t3.large"
 }
 variable "instance_type_obs" {
   type    = string
@@ -818,7 +818,7 @@ resource "aws_launch_template" "core_lt" {
 
   tag_specifications {
     resource_type = "instance"
-    tags          = merge(local.tags_base, { Name = "anb-core" })
+    tags          = merge(local.tags_base, { Name = "anb-core", Role = "core" })
   }
 
   tag_specifications {

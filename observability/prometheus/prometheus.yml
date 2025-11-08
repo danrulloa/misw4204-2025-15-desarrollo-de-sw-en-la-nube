@@ -32,8 +32,42 @@ scrape_configs:
     static_configs:
       - targets: ["__AUTH_IP__:8001"]
 
-  # Core se autoescala vía ASG; Prometheus no descubre dinámicamente esas IPs aquí.
-  # Opcional: habilitar discovery por AWS o exportar métricas vía ALB con rewrites.
+
+  # Descubrimiento dinámico: Core API (todas las instancias del ASG)
+  - job_name: core-api
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 8000
+        filters:
+          - name: tag:Name
+            values: ["anb-core"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: instance_ip
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+      - source_labels: [__meta_ec2_tag_Project]
+        target_label: project
+
+  # Descubrimiento dinámico: cAdvisor en Core (puerto 8080)
+  - job_name: core-cadvisor
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 8080
+        filters:
+          - name: tag:Name
+            values: ["anb-core"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: instance_ip
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
 
   - job_name: "worker"
     metrics_path: /metrics

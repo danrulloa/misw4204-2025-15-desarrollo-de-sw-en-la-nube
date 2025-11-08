@@ -223,6 +223,7 @@ services:
     command: [ "--web.enable-lifecycle", "--config.file=/etc/prometheus/prometheus.yml", "--web.external-url=${PROMETHEUS_EXTERNAL_URL}", "--web.route-prefix=/" ]
     ports:
       - "9090:9090"                  
+    env_file: [ .env ]
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     restart: unless-stopped

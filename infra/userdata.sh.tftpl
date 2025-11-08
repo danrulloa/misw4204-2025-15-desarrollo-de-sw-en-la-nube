@@ -142,7 +142,7 @@ if [ "$ROLE" = "obs" ]; then
   if [ -n "${web_ip}" ]; then
     sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   fi
-  sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  # CORE ahora usa EC2 service discovery, no reemplazamos __CORE_IP__ (ya no existe en prometheus.yml)
   sed -i "s/__AUTH_IP__/${auth_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
