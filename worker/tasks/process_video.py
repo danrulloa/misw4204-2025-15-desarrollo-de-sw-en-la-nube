@@ -9,6 +9,7 @@ import psycopg
 import boto3
 from botocore.exceptions import ClientError
 from botocore.config import Config
+from boto3.s3.transfer import TransferConfig
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,17 @@ def _parse_s3_path(s3_path: str) -> tuple[str, str]:
     parts = s3_path.replace('s3://', '').split('/', 1)
     return parts[0], parts[1] if len(parts) > 1 else ''
 
+def _make_s3_transfer_config():
+    """Configura multipart y paralelismo para transferencias S3."""
+    max_conc = int(os.getenv('S3_MAX_CONCURRENCY', '10')) 
+    part_mb  = int(os.getenv('S3_MULTIPART_CHUNK_MB', '16')) 
+    thr_mb   = int(os.getenv('S3_MULTIPART_THRESHOLD_MB', '64'))
+    return TransferConfig(
+        max_concurrency=max_conc,
+        multipart_chunksize=part_mb * 1024 * 1024,
+        multipart_threshold=thr_mb * 1024 * 1024,
+        use_threads=True,
+    )
 
 def _make_s3_client():
     """Crea un cliente S3 alineado con el adapter del core, usando credenciales explícitas.
@@ -98,7 +110,7 @@ def _download_from_s3(s3_path: str, local_path: Path) -> Path:
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        s3_client.download_file(bucket, key, str(local_path))
+        s3_client.download_file(bucket, key, str(local_path), Config=_make_s3_transfer_config())
         logger.info('Descargado desde S3: %s -> %s', s3_path, local_path)
         return local_path
     except ClientError as e:
@@ -112,7 +124,7 @@ def _upload_to_s3(local_path: Path, s3_path: str) -> str:
     s3_client = _make_s3_client()
 
     try:
-        s3_client.upload_file(str(local_path), bucket, key)
+        s3_client.upload_file(str(local_path), bucket, key, Config=_make_s3_transfer_config())
         logger.info('Subido a S3: %s -> %s', local_path, s3_path)
         return s3_path
     except ClientError as e:
@@ -288,13 +300,18 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
     else:
         cmd.extend(['-map', '[v]'])
 
+    ff_threads = os.getenv('FFMPEG_THREADS', '0')        
+    ff_preset  = os.getenv('FFMPEG_PRESET', 'veryfast') 
+    ff_crf     = os.getenv('FFMPEG_CRF', '23') 
+
     out_file = tmpdir / 'output.mp4'
     cmd.extend([
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
+        '-preset', ff_preset,
+        '-crf', ff_crf,
         '-pix_fmt', 'yuv420p',
         '-an',
+        '-threads', ff_threads,
         str(out_file)
     ])
 
@@ -379,7 +396,14 @@ def _update_db_if_needed(video_id, correlation_id, output_str, db_url):
                 logger.warning('No rows updated for video id=%s', video_id)
 
 
-@shared_task(bind=True, name="tasks.process_video.run")
+@shared_task(
+    bind=True,
+    name="tasks.process_video.run",
+    acks_late=True,
+    reject_on_worker_lost=True,
+    soft_time_limit= int(os.getenv('CELERY_SOFT_TL', '900')), 
+    time_limit     = int(os.getenv('CELERY_HARD_TL', '1200')),
+)
 def run(self, *args, **kwargs):
     """Process a video file:
 
