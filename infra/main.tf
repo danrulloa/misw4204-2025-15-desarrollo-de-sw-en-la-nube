@@ -120,13 +120,17 @@ variable "instance_type_core" {
   type    = string
   default = "t3.small"
 }
+variable "instance_type_auth" {
+  type    = string
+  default = "t3.small"
+}
 variable "instance_type_mq" {
   type    = string
   default = "t3.small"
 }
 variable "instance_type_worker" {
   type    = string
-  default = "t3.small"
+  default = "t3.large"
 }
 variable "instance_type_obs" {
   type    = string
@@ -270,14 +274,7 @@ resource "aws_security_group_rule" "core_from_alb_8000" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.alb.id
 }
-resource "aws_security_group_rule" "core_from_alb_8001" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.core.id
-  from_port                = 8001
-  to_port                  = 8001
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb.id
-}
+## Auth will move to its own SG; remove ALB->8001 on CORE
 
 # Allow Prometheus (OBS) to scrape CORE metrics (API 8000, Auth 8001) and cadvisor (8080)
 resource "aws_security_group_rule" "core_from_obs_8000" {
@@ -288,14 +285,7 @@ resource "aws_security_group_rule" "core_from_obs_8000" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.obs.id
 }
-resource "aws_security_group_rule" "core_from_obs_8001" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.core.id
-  from_port                = 8001
-  to_port                  = 8001
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
+## Auth will move to its own SG; remove OBS->8001 on CORE
 resource "aws_security_group_rule" "core_from_obs_8080" {
   type                     = "ingress"
   security_group_id        = aws_security_group.core.id
@@ -331,6 +321,77 @@ resource "aws_security_group" "worker" {
   tags        = local.tags_base
 }
 
+# AUTH: 8001 (Auth app) desde ALB/CORE/OBS y 8080 (cAdvisor) desde OBS
+resource "aws_security_group" "auth" {
+  name        = "anb-auth-sg"
+  description = "AUTH ingress from ALB/CORE and OBS"
+  vpc_id      = data.aws_vpc.default.id
+  tags        = local.tags_base
+}
+
+resource "aws_security_group_rule" "auth_from_alb_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "auth_from_core_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.core.id
+}
+
+resource "aws_security_group_rule" "auth_from_obs_8001" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8001
+  to_port                  = 8001
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
+resource "aws_security_group_rule" "auth_from_obs_8080" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.auth.id
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.obs.id
+}
+
+resource "aws_security_group_rule" "auth_ssh" {
+  type              = "ingress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  cidr_blocks       = [var.admin_cidr]
+}
+
+resource "aws_security_group_rule" "auth_egress_all" {
+  type              = "egress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "auth_egress_udp" {
+  type              = "egress"
+  security_group_id = aws_security_group.auth.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "udp"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
 # RDS: Security group para bases de datos RDS
 resource "aws_security_group" "rds" {
   name        = "anb-rds-sg"
@@ -349,6 +410,16 @@ resource "aws_security_group_rule" "rds_ingress_from_core" {
   protocol                 = "tcp"
   source_security_group_id = aws_security_group.core.id
   description              = "Core/API to RDS"
+}
+
+resource "aws_security_group_rule" "rds_ingress_from_auth" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.rds.id
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.auth.id
+  description              = "Auth service to RDS"
 }
 
 resource "aws_security_group_rule" "rds_ingress_from_worker" {
@@ -658,7 +729,7 @@ resource "aws_security_group_rule" "obs_ssh" {
 # ========== EC2 por rol con user-data (templatefile) ==========
 # Orden sin ciclos:
 #   MQ no depende de nadie
-#   CORE depende de MQ
+#   CORE usa AutoScalingGroup (depende de MQ y RDS)
 #   WORKER depende de MQ
 #   WEB depende de CORE
 #   OBS no depende de otros (Prometheus se puede configurar luego)
@@ -681,6 +752,7 @@ resource "aws_instance" "mq" {
     mq_ip                 = "",
     worker_ip             = "",
     obs_ip                = "",
+    auth_ip               = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = "",
     rds_auth_endpoint     = "",
@@ -701,15 +773,17 @@ resource "aws_instance" "mq" {
   }
 }
 
-resource "aws_instance" "core" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_core
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.core.id]
-  depends_on                  = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+## CORE ahora se gestiona con Launch Template + AutoScalingGroup
+
+resource "aws_launch_template" "core_lt" {
+  name_prefix   = "anb-core-lt-"
+  image_id      = local.ami_id
+  instance_type = var.instance_type_core
+  key_name      = var.key_name == "" ? null : var.key_name
+
+  vpc_security_group_ids = [aws_security_group.core.id]
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "core",
     repo_url              = var.repo_url,
     repo_branch           = var.repo_branch,
@@ -719,6 +793,101 @@ resource "aws_instance" "core" {
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
+    auth_ip               = "",
+    alb_dns               = aws_lb.public.dns_name,
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = aws_db_instance.auth.address,
+    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key      = "",
+    assets_wm_key         = "",
+    aws_region            = try(local.aws_env.aws_region, var.region),
+    aws_profile           = var.aws_profile,
+    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
+    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
+    aws_session_token     = try(local.aws_env.aws_session_token, "")
+  }))
+
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_size = 40
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = merge(local.tags_base, { Name = "anb-core" })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags          = local.tags_base
+  }
+}
+
+resource "aws_autoscaling_group" "core" {
+  name                      = "anb-core-asg"
+  desired_capacity          = 1
+  min_size                  = 1
+  max_size                  = 3
+  vpc_zone_identifier       = [local.subnet_id]
+  health_check_type         = "ELB"
+  health_check_grace_period = 300
+  target_group_arns         = [aws_lb_target_group.tg_api.arn]
+
+  launch_template {
+    id      = aws_launch_template.core_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "anb-core"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
+}
+
+resource "aws_autoscaling_policy" "core_cpu_target" {
+  name                   = "anb-core-cpu-60"
+  autoscaling_group_name = aws_autoscaling_group.core.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value     = 60
+    disable_scale_in = false
+  }
+}
+
+resource "aws_instance" "auth" {
+  ami                         = local.ami_id
+  instance_type               = var.instance_type_auth
+  subnet_id                   = local.subnet_id
+  associate_public_ip_address = true
+  key_name                    = var.key_name == "" ? null : var.key_name
+  vpc_security_group_ids      = [aws_security_group.auth.id]
+  depends_on                  = [aws_db_instance.auth, aws_s3_bucket.anb_videos]
+  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+    role                  = "auth",
+    repo_url              = var.repo_url,
+    repo_branch           = var.repo_branch,
+    compose_file          = var.compose_file,
+    web_ip                = "",
+    core_ip               = "",
+    mq_ip                 = "",
+    worker_ip             = "",
+    obs_ip                = "",
+    auth_ip               = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = aws_db_instance.auth.address,
@@ -732,9 +901,9 @@ resource "aws_instance" "core" {
     aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
     aws_session_token     = try(local.aws_env.aws_session_token, "")
   })
-  tags = merge(local.tags_base, { Name = "anb-core" })
+  tags = merge(local.tags_base, { Name = "anb-auth" })
   root_block_device {
-    volume_size = 40
+    volume_size = 30
     volume_type = "gp3"
   }
 }
@@ -757,6 +926,7 @@ resource "aws_instance" "worker" {
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
+    auth_ip               = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = "",
@@ -791,13 +961,14 @@ resource "aws_instance" "obs" {
     repo_branch           = var.repo_branch,
     compose_file          = var.compose_file,
     web_ip                = "",
-    core_ip               = aws_instance.core.private_ip,
+    core_ip               = "",
+    auth_ip               = aws_instance.auth.private_ip,
     mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = aws_instance.worker.private_ip,
     obs_ip                = "",
     alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = "",
-    rds_auth_endpoint     = "",
+    rds_core_endpoint     = aws_db_instance.core.address,
+    rds_auth_endpoint     = aws_db_instance.auth.address,
     rds_password          = var.rds_password,
     s3_bucket             = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key      = "",
@@ -1272,14 +1443,11 @@ resource "aws_lb_listener_rule" "r_health_fixed" {
 }
 
 # Registro de instancias en los target groups
-resource "aws_lb_target_group_attachment" "att_api_core" {
-  target_group_arn = aws_lb_target_group.tg_api.arn
-  target_id        = aws_instance.core.id
-}
+## Registro dinámico de CORE al TG via AutoScalingGroup (se quita attachment estático)
 
-resource "aws_lb_target_group_attachment" "att_auth_core" {
+resource "aws_lb_target_group_attachment" "att_auth_auth" {
   target_group_arn = aws_lb_target_group.tg_auth.arn
-  target_id        = aws_instance.core.id
+  target_id        = aws_instance.auth.id
 }
 
 resource "aws_lb_target_group_attachment" "att_rmq_mq" {
@@ -1393,7 +1561,8 @@ resource "null_resource" "alb_apply_transform_prom" {
 # ========== Outputs ==========
 output "public_ips" {
   value = {
-    core   = aws_instance.core.public_ip
+    core   = "ASG-managed"
+    auth   = aws_instance.auth.public_ip
     mq     = aws_instance.mq.public_ip
     worker = aws_instance.worker.public_ip
     obs    = aws_instance.obs.public_ip
@@ -1402,7 +1571,8 @@ output "public_ips" {
 
 output "private_ips" {
   value = {
-    core   = aws_instance.core.private_ip
+    core   = "ASG-managed"
+    auth   = aws_instance.auth.private_ip
     mq     = aws_instance.mq.private_ip
     worker = aws_instance.worker.private_ip
     obs    = aws_instance.obs.private_ip
@@ -1432,6 +1602,33 @@ output "service_urls" {
     loki_push          = "http://${aws_lb.public.dns_name}/loki/api/v1/push"
     health             = "http://${aws_lb.public.dns_name}/nginx-health"
   }
+}
+
+## Descubrimiento de instancias CORE lanzadas por el ASG (para referencia)
+data "aws_instances" "core" {
+  filter {
+    name   = "tag:Name"
+    values = ["anb-core"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+}
+
+output "core_asg_instance_ids" {
+  description = "Instance IDs in the CORE ASG"
+  value       = data.aws_instances.core.ids
+}
+
+output "core_asg_public_ips" {
+  description = "Public IPs of CORE ASG instances"
+  value       = data.aws_instances.core.public_ips
+}
+
+output "core_asg_private_ips" {
+  description = "Private IPs of CORE ASG instances"
+  value       = data.aws_instances.core.private_ips
 }
 
 output "rds_endpoints" {

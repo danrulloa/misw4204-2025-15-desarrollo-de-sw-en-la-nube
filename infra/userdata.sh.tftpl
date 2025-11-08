@@ -10,6 +10,7 @@ repo_branch="${repo_branch}"
 COMPOSE_FILE="${compose_file}"
 
 core_ip="${core_ip}"
+auth_ip="${auth_ip}"
 mq_ip="${mq_ip}"
 obs_ip="${obs_ip}"
 web_ip="${web_ip}"
@@ -91,7 +92,7 @@ RABBITMQ_HOST=${mq_ip}
 
 # WEB upstreams
 UPSTREAM_API=http://${core_ip}:8000
-UPSTREAM_AUTH=http://${core_ip}:8001
+UPSTREAM_AUTH=http://${auth_ip}:8001
 
 # JWT
 ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
@@ -142,6 +143,7 @@ if [ "$ROLE" = "obs" ]; then
     sed -i "s/__WEB_IP__/${web_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   fi
   sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
+  sed -i "s/__AUTH_IP__/${auth_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
 
@@ -206,6 +208,7 @@ echo "[anb] Usando compose: $COMPOSE_PATH"
 case "$ROLE" in
   web)    docker compose -f "$COMPOSE_PATH" --profile web    up -d ;;
   core)   docker compose -f "$COMPOSE_PATH" --profile core   up -d ;;
+  auth)   docker compose -f "$COMPOSE_PATH" --profile auth   up -d ;;
   mq)     docker compose -f "$COMPOSE_PATH" --profile mq     up -d ;;
   worker) docker compose -f "$COMPOSE_PATH" --profile worker up -d ;;
   obs)    docker compose -f "$COMPOSE_PATH" --profile obs    up -d ;;

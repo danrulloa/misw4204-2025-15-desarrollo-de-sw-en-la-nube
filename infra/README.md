@@ -2,7 +2,7 @@
 
 ## 0) Contexto y arquitectura
 
-Este lab levanta **5 instancias EC2** (o 6 si se incluye la instancia DB legacy) con Ubuntu, más **2 instancias RDS** para bases de datos PostgreSQL y un **bucket S3** para almacenamiento de videos. La instalación puede ser:
+Este lab levanta **6 instancias EC2** (o 7 si se incluye la instancia DB legacy) con Ubuntu, más **2 instancias RDS** para bases de datos PostgreSQL y un **bucket S3** para almacenamiento de videos. La instalación puede ser:
 
 - **Automática** (recomendada): vía `user-data` (cloud-init) se instala Docker/Compose, se clona el repo y se levanta el stack multihost.
 - **Manual**: copias el paquete y ejecutas `docker compose` por perfiles.
@@ -11,8 +11,9 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 
 **Topología actualizada:**
 
-### Instancias EC2 (5-6 VMs)
-- **CORE**: anb_api + anb-auth-service + cAdvisor + promtail  
+### Instancias EC2 (6-7 VMs)
+- **CORE**: API principal (`anb_api`) + cAdvisor + promtail  
+- **AUTH**: Servicio de autenticación (`anb-auth-service`) + cAdvisor + promtail  
 - **DB** (legacy, opcional): PostgreSQL local - **Ya no se usa si RDS está configurado**
 - **MQ**: RabbitMQ (broker/UI) + cAdvisor + promtail  
 - **WORKER**: Celery worker + cAdvisor + promtail  
@@ -29,17 +30,18 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
    - Destrucción: configurado con `force_destroy = true` para eliminar el bucket aunque tenga objetos y versiones
 - **Application Load Balancer (ALB)**: Balanceador de carga público
   - Recibe tráfico HTTP en puerto 80
-  - Distribuye carga a instancias Core
+   - Distribuye carga a instancias Core y Auth
   - Routing a servicios de observabilidad (Grafana, Prometheus, Loki, RabbitMQ UI)
 
-**Security Groups (7):**
+**Security Groups (8):**
 - `alb` - Application Load Balancer (HTTP 80 público)
-- `core` - Instancia Core (API + Auth)
+- `core` - Instancia Core (solo API)
+- `auth` - Instancia Auth (puerto 8001)
 - `db` - Instancia DB legacy (solo si se mantiene)
 - `worker` - Instancia Worker
 - `mq` - Instancia RabbitMQ
 - `obs` - Instancia Observabilidad
-- `rds` - RDS PostgreSQL (Core y Auth comparten este SG)
+- `rds` - RDS PostgreSQL (Core, Auth y Worker acceden en 5432)
 
 ---
 
@@ -51,7 +53,7 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
    - `aws_db_instance.core` - Base de datos para el API Core
    - `aws_db_instance.auth` - Base de datos para el servicio de autenticación
    - `aws_db_subnet_group.anb_rds` - Subnet group para RDS (requiere al menos 2 AZs)
-   - `aws_security_group.rds` - Security group que permite tráfico desde instancias Core y Worker en puerto 5432
+   - `aws_security_group.rds` - Security group que permite tráfico desde instancias Core, Auth y Worker en puerto 5432
 
 2. **S3 Bucket**:
    - `aws_s3_bucket.anb_videos` - Bucket con nombre único (`anb-basketball-bucket-*`)
@@ -59,10 +61,10 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 
 3. **Application Load Balancer (ALB)**:
    - `aws_lb.public` - Load balancer público HTTP (puerto 80)
-   - `aws_lb_target_group.core_api` - Target group para instancias Core (API en puerto 8000)
-   - `aws_lb_target_group.core_auth` - Target group para instancias Core (Auth en puerto 8001)
-   - `aws_lb_target_group.obs_*` - Target groups para servicios de observabilidad (Grafana, Prometheus, Loki)
-   - `aws_lb_target_group.mq_ui` - Target group para RabbitMQ UI
+   - `aws_lb_target_group.tg_api` - Target group para instancias Core (API puerto 8000)
+   - `aws_lb_target_group.tg_auth` - Target group para instancias Auth (Auth puerto 8001)
+   - `aws_lb_target_group.tg_grafana`, `tg_prom`, `tg_loki` - Target groups para observabilidad
+   - `aws_lb_target_group.tg_rmq` - Target group para RabbitMQ UI
    - Listeners y reglas de routing para distribuir tráfico según paths (`/api/*`, `/auth/*`, `/grafana/*`, etc.)
 
 ### Variables agregadas
@@ -440,11 +442,12 @@ terraform output public_ips
 ```
 
 **Outputs importantes:**
-- `alb_dns_name` - DNS del Application Load Balancer (para acceder a la API)
+- `alb_dns_name` - DNS del Application Load Balancer (para acceder a API y Auth)
 - `rds_endpoints` - Endpoints de RDS (Core y Auth)
-- `rds_addresses` - Direcciones IP/hostnames de RDS
+- `rds_addresses` - Hostnames de RDS
 - `s3_bucket_name` - Nombre del bucket S3
-- `public_ips` - IPs públicas de las instancias EC2 (para SSH)
+- `public_ips` - IPs públicas (core, auth, mq, worker, obs)
+- `private_ips` - IPs privadas (core, auth, mq, worker, obs)
 
 ### 5.4 ¿Qué hacer con los outputs?
 
@@ -701,8 +704,9 @@ echo $ALB_DNS
 
 **Servicios disponibles:**
 - **API Docs**: `http://$ALB_DNS/api/docs`
-- **Auth Docs**: `http://$ALB_DNS/auth/docs`
 - **API Health**: `http://$ALB_DNS/api/health`
+- **Auth Status**: `http://$ALB_DNS/auth/api/v1/status`
+- **Auth OpenAPI**: `http://$ALB_DNS/auth/openapi.json`
 - **Grafana**: `http://$ALB_DNS/grafana/` (admin/admin)
 - **Prometheus**: `http://$ALB_DNS/prometheus/`
 - **RabbitMQ UI**: `http://$ALB_DNS/rabbitmq/` (rabbit/rabbitpass)
