@@ -336,14 +336,8 @@ class LocalUploadService:
         staging_path = self._staging_root / f"{uuid.uuid4().hex}-{filename}"
         loop = asyncio.get_running_loop()
 
-        source_path = getattr(upload_file.file, "name", None)
         upload_file.file.seek(0)
-
-        if source_path and os.path.exists(source_path):
-            await loop.run_in_executor(None, shutil.copy2, source_path, staging_path)
-        else:
-            await loop.run_in_executor(None, self._copy_stream, upload_file.file, staging_path)
-
+        await loop.run_in_executor(None, self._copy_stream, upload_file.file, staging_path)
         upload_file.file.seek(0)
         return staging_path
 
