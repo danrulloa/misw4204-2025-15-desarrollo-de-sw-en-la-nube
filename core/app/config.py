@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str | None = os.getenv("PUBLIC_BASE_URL") or None
 
     # Configuración de base de datos
-    DATABASE_URL: str = "postgresql+asyncpg://anb_user:anb_pass@anb-core-db:5432/anb_core"
+    DATABASE_URL: str | None = os.getenv("DATABASE_URL") or None
 
     VIDEO_EXCHANGE: str = os.getenv("VIDEO_EXCHANGE", "video")
     WORKER_INPUT_PREFIX: str = "/mnt/uploads"
