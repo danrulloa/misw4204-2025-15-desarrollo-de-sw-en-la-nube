@@ -211,8 +211,7 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 ### Documentación
 
 - [Documentación Completa - Entrega 3](docs/entrega3/entrega_3.md)
-- [Arquitectura Actual](entrega3/ARQUITECTURA_ACTUAL.md)
-- [Diferencias Entrega 2 vs 3](entrega3/DIFERENCIAS_ENTREGA_2_VS_3.md)
+- [Arquitectura Actual]([entrega3/ARQUITECTURA_ACTUAL.md](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-3#arquitectura-entrega-3))
 - [Infraestructura Terraform](infra/README.md)
 
 ---
@@ -288,33 +287,6 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 - Loki (logs)
 - CloudWatch (métricas AWS - Entrega 3)
 
----
-
-## 📖 Documentación Adicional
-
-### Wiki del Proyecto
-
-La documentación completa se encuentra en la [Wiki de GitHub](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki):
-
-- [Cómo Iniciar](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Cómo-Iniciar) - Guía de instalación y configuración
-- [Observabilidad](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Observabilidad) - Stack de monitoreo y logs
-- [Testing](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Testing) - Pruebas unitarias y Postman
-- [Arquitectura](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Arquitectura) - Diagramas y decisiones de diseño
-- [Pruebas de Carga](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Pruebas-de-Carga) - Análisis de capacidad
-
-### Documentación por Entrega
-
-- [Entrega 1 - API REST y Procesamiento Asíncrono](docs/Entrega_1/README.md)
-- [Entrega 2 - Despliegue en AWS](docs/Entrega_2/README.md)
-- [Entrega 3 - Escalabilidad en la Capa Web](docs/entrega3/entrega_3.md)
-
-### READMEs de Servicios
-
-- [core/README.md](core/README.md) - API Principal (desarrollo local)
-- [auth_service/README.md](auth_service/README.md) - Servicio de Autenticación
-- [worker/README.md](worker/README.md) - Worker de Procesamiento
-- [infra/README.md](infra/README.md) - Infraestructura Terraform
-- [collections/README.md](collections/README.md) - Guía de Colección Postman
 
 ---
 
