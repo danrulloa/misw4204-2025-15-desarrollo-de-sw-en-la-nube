@@ -2,6 +2,7 @@
 
 import os
 import logging
+from typing import Optional
 from celery import Celery
 from kombu import Exchange, Queue
 
@@ -25,9 +26,9 @@ def _amqp_url() -> str:
 class CeleryPool:
     """Pool singleton de cliente Celery reutilizable."""
     
-    _instance: 'CeleryPool' = None
-    _celery_app: Celery = None
-    
+    _instance: Optional['CeleryPool'] = None
+    _celery_app: Optional[Celery] = None
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -67,10 +68,11 @@ class CeleryPool:
     
     def get_client(self) -> Celery:
         """Obtener cliente Celery singleton."""
+        assert self._celery_app is not None
         return self._celery_app
 
 
-_pool: CeleryPool = None
+_pool: Optional[CeleryPool] = None
 
 
 def get_pool() -> CeleryPool:
@@ -78,5 +80,5 @@ def get_pool() -> CeleryPool:
     global _pool
     if _pool is None:
         _pool = CeleryPool()
+    assert _pool is not None
     return _pool
-

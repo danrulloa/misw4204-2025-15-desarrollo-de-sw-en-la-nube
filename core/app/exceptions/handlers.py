@@ -11,12 +11,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
+def api_exception_handler(_request: Request, exc: APIException) -> JSONResponse:
     """
     Handler para excepciones personalizadas de la API
     
     Args:
-        request: Request de FastAPI
         exc: Excepción personalizada
         
     Returns:
@@ -33,15 +32,14 @@ async def api_exception_handler(request: Request, exc: APIException) -> JSONResp
     )
 
 
-async def validation_exception_handler(
-    request: Request, 
+def validation_exception_handler(
+    _request: Request,
     exc: RequestValidationError
 ) -> JSONResponse:
     """
     Handler para errores de validación de Pydantic
     
     Args:
-        request: Request de FastAPI
         exc: Error de validación
         
     Returns:
@@ -59,12 +57,11 @@ async def validation_exception_handler(
     )
 
 
-async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+def general_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
     """
     Handler para excepciones no controladas
     
     Args:
-        request: Request de FastAPI
         exc: Excepción genérica
         
     Returns:
