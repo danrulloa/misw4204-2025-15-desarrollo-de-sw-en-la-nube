@@ -10,6 +10,7 @@ Colección completa de Postman para probar todos los endpoints de la API ANB Ris
 
 - `ANB_Basketball_API.postman_collection.json` - Colección con 14 endpoints y tests automatizados
 - `ANB_Basketball_API.postman_environment.json` - Environment con variables configuradas para local
+- `ANB_Basketball_API.postman_environment_AWS.json` - Environment con variables configuradas para AWS (ALB)
 
 ---
 
@@ -17,6 +18,7 @@ Colección completa de Postman para probar todos los endpoints de la API ANB Ris
 
 ### Postman Desktop/Web
 
+**Para desarrollo local:**
 1. Abre Postman
 2. Click en **Import**
 3. Selecciona ambos archivos:
@@ -24,6 +26,18 @@ Colección completa de Postman para probar todos los endpoints de la API ANB Ris
    - `ANB_Basketball_API.postman_environment.json`
 4. Selecciona el environment "ANB Basketball API - Local Environment" en el dropdown superior derecho
 5. Ejecuta los requests en orden
+
+**Para pruebas en AWS:**
+1. Abre Postman
+2. Click en **Import**
+3. Selecciona ambos archivos:
+   - `ANB_Basketball_API.postman_collection.json`
+   - `ANB_Basketball_API.postman_environment_AWS.json`
+4. Selecciona el environment "ANB Basketball API - AWS Environment" en el dropdown superior derecho
+5. El `base_url` ya está configurado para apuntar al ALB
+6. Ejecuta los requests en orden
+
+**Nota**: Consulta [`infra/GUIA_PRUEBAS_AWS.md`](../infra/GUIA_PRUEBAS_AWS.md) para instrucciones detalladas de pruebas en AWS.
 
 ### Newman CLI
 
@@ -42,12 +56,25 @@ newman run ANB_Basketball_API.postman_collection.json \
 
 ## Variables de Entorno
 
-El archivo de environment incluye:
+### Environment Local
 
 | Variable | Valor Default | Descripción |
 |----------|---------------|-------------|
 | `base_url` | `http://localhost:8080` | URL base de la API |
 | `user_email` | Auto-generado | Email con timestamp para evitar conflictos |
+| `access_token` | Auto-generado | Token JWT (se guarda automáticamente al login) |
+| `refresh_token` | Auto-generado | Token de refresco (se guarda automáticamente) |
+| `video_id` | Auto-generado | ID del último video subido |
+
+### Environment AWS
+
+| Variable | Valor Default | Descripción |
+|----------|---------------|-------------|
+| `base_url` | `http://anb-public-alb-...elb.amazonaws.com` | URL del ALB en AWS |
+| `alb_dns` | DNS del ALB | Nombre DNS del Application Load Balancer |
+| `rds_core_endpoint` | Endpoint RDS Core | Endpoint de la base de datos Core |
+| `rds_auth_endpoint` | Endpoint RDS Auth | Endpoint de la base de datos Auth |
+| `s3_bucket` | Nombre del bucket | Nombre del bucket S3 para videos |
 | `access_token` | Auto-generado | Token JWT (se guarda automáticamente al login) |
 | `refresh_token` | Auto-generado | Token de refresco (se guarda automáticamente) |
 | `video_id` | Auto-generado | ID del último video subido |

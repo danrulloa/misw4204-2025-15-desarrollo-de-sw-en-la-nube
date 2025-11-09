@@ -28,30 +28,7 @@ services:
       retries: 5
       start_period: 25s
     networks: [ internal ]
-
-  anb-auth-service:
-    profiles: ["core"]
-    image: ftaboadar/anb-auth:latest
-    container_name: anb-auth-service
-    ports:
-      - "8001:8000"                    
-    env_file: [ .env ]
-    environment:
-      - APP_ENV=${APP_ENV:-production}
-      - PORT=8000
-      - DATABASE_URL=${DB_URL_AUTH}      
-      - JWT_SECRET=${JWT_SECRET:-changeme}
-
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/auth/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
-      interval: 15s
-      timeout: 5s
-      start_period: 25s
-      retries: 5
-    networks: [ internal ]
-
+  
   cadvisor-core:
     profiles: ["core","obs-agent"]
     image: gcr.io/cadvisor/cadvisor:latest
@@ -84,78 +61,34 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
-  # ================== DB ==================
-  anb-auth-db:
-    profiles: ["db"]
-    image: postgres:15-alpine
-    container_name: anb-auth-db
+# ================== AUTH ==================
+  anb-auth-service:
+    profiles: ["auth"]
+    image: ftaboadar/anb-auth:latest
+    container_name: anb-auth-service
+    ports:
+      - "8001:8000"                    
     env_file: [ .env ]
     environment:
-      - POSTGRES_DB=${POSTGRES_DB_AUTH:-anb_auth}
-      - POSTGRES_USER=${POSTGRES_USER:-anb_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
-      - TZ=America/Bogota
-    ports:
-      - "5433:5432"       
-    volumes:
-      - postgres_auth_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB_AUTH:-anb_auth} -h 127.0.0.1 -p 5432" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-    networks: [ internal ]
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=8000
+      - DATABASE_URL=${DB_URL_AUTH}      
+      - JWT_SECRET=${JWT_SECRET:-changeme}
 
-  anb-core-db:
-    profiles: ["db"]
-    image: postgres:15-alpine
-    container_name: anb-core-db
-    env_file: [ .env ]
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB_CORE:-anb_core}
-      - POSTGRES_USER=${POSTGRES_USER:-anb_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-anb_pass}
-      - TZ=America/Bogota
-    ports:
-      - "5432:5432"            
-    volumes:
-      - postgres_core_data:/var/lib/postgresql/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anb_user} -d ${POSTGRES_DB_CORE:-anb_core} -h 127.0.0.1 -p 5432" ]
-      interval: 10s
+      test: [ "CMD", "python", "-c", "import sys,urllib.request; u='http://127.0.0.1:8000/auth/api/v1/status'; r=urllib.request.urlopen(u, timeout=3); sys.exit(0 if 200<=r.status<400 else 1)" ]
+      interval: 15s
       timeout: 5s
-      retries: 10
       start_period: 25s
-    restart: unless-stopped
+      retries: 5
     networks: [ internal ]
-
-  pg-exporter-auth:
-    profiles: ["db","obs-agent-db"]
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: pg-exporter-auth
-    environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-auth-db:5432/${POSTGRES_DB_AUTH:-anb_auth}?sslmode=disable
-    ports:
-      - "9188:9187"
-    restart: unless-stopped
-    networks: [ internal ]
-
-  pg-exporter-core:
-    profiles: ["db","obs-agent-db"]
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: pg-exporter-core
-    environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-anb_user}:${POSTGRES_PASSWORD:-anb_pass}@anb-core-db:5432/${POSTGRES_DB_CORE:-anb_core}?sslmode=disable
-    ports:
-      - "9187:9187"
-    restart: unless-stopped
-    networks: [ internal ]
-
-  cadvisor-db:
-    profiles: ["db","obs-agent"]
+  
+  cadvisor-auth:
+    profiles: ["auth","obs-agent"]
     image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor-db
+    container_name: cadvisor-auth
     privileged: true
     ports:
       - "8080:8080"
@@ -167,10 +100,10 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
-  promtail-db:
-    profiles: ["db","obs-agent"]
+  promtail-auth:
+    profiles: ["auth","obs-agent"]
     image: grafana/promtail:2.9.4
-    container_name: promtail-db
+    container_name: promtail-auth
     command:
       - -config.file=/etc/promtail/config.yml
       - -config.expand-env=true
@@ -184,6 +117,7 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
+ 
   # ================== MQ ==================
   rabbitmq:
     profiles: ["mq"]
@@ -256,6 +190,10 @@ services:
       - CELERY_RESULT_BACKEND=rpc://
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
+    ports:
+      - "9100:9100"    # Prometheus metrics endpoint
+    volumes:
+      - ./worker/assets:/app/assets:ro
     networks: [ internal ]
     logging:
       driver: json-file
@@ -285,6 +223,7 @@ services:
     command: [ "--web.enable-lifecycle", "--config.file=/etc/prometheus/prometheus.yml", "--web.external-url=${PROMETHEUS_EXTERNAL_URL}", "--web.route-prefix=/" ]
     ports:
       - "9090:9090"                  
+    env_file: [ .env ]
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     restart: unless-stopped
@@ -323,13 +262,32 @@ services:
     restart: unless-stopped
     networks: [ internal ]
 
+  
+
+  # Log shipper on WORKER host
+  promtail-worker:
+    profiles: ["worker","obs-agent"]
+    image: grafana/promtail:2.9.4
+    container_name: promtail-worker
+    command:
+      - -config.file=/etc/promtail/config.yml
+      - -config.expand-env=true
+    environment:
+      - LOKI_URL=${LOKI_URL}
+    volumes:
+      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    networks: [ internal ]
+
 networks:
   internal:
     name: anb-internal
 
 volumes:
   rabbitmq_data:
-  postgres_auth_data:
-  postgres_core_data:
   grafana_data:
   loki_data:
+  

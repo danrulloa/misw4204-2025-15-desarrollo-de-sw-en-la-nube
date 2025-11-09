@@ -13,6 +13,7 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - CELERY_BROKER_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@rabbitmq:5672//
       - CELERY_RESULT_BACKEND=rpc://
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-rabbit}:${RABBITMQ_DEFAULT_PASS:-rabbitpass}@rabbitmq:5672/
     volumes:
       - ./core/storage:/app/storage
     restart: unless-stopped
@@ -131,8 +132,9 @@ services:
     healthcheck:
       test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 15s
-      timeout: 15s
+      timeout: 30s
       retries: 5
+      start_period: 90s
     networks:
       - internal
     logging:
@@ -162,6 +164,8 @@ services:
       - ./worker/assets:/app/assets:ro
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
+    ports:
+      - "9100:9100"  # Prometheus metrics endpoint
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -403,6 +407,8 @@ services:
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOKI_URL=${LOKI_URL}
     depends_on:
       - loki
     restart: unless-stopped

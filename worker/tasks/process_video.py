@@ -6,6 +6,10 @@ import shutil
 import logging
 from pathlib import Path
 import psycopg
+import boto3
+from botocore.exceptions import ClientError
+from botocore.config import Config
+from boto3.s3.transfer import TransferConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +39,112 @@ def _parse_task_args(args, kwargs):
     return args[0], args[1], args[2]
 
 
+def _is_s3_path(path: str) -> bool:
+    """Detecta si la ruta es S3 (s3://bucket/key) o local."""
+    return str(path).startswith('s3://')
+
+
+def _parse_s3_path(s3_path: str) -> tuple[str, str]:
+    """Parsea s3://bucket/key -> (bucket, key)"""
+    if not _is_s3_path(s3_path):
+        raise ValueError(f"Not an S3 path: {s3_path}")
+    # s3://bucket/key -> bucket, key
+    parts = s3_path.replace('s3://', '').split('/', 1)
+    return parts[0], parts[1] if len(parts) > 1 else ''
+
+def _make_s3_transfer_config():
+    """Configura multipart y paralelismo para transferencias S3."""
+    max_conc = int(os.getenv('S3_MAX_CONCURRENCY', '10')) 
+    part_mb  = int(os.getenv('S3_MULTIPART_CHUNK_MB', '16')) 
+    thr_mb   = int(os.getenv('S3_MULTIPART_THRESHOLD_MB', '64'))
+    return TransferConfig(
+        max_concurrency=max_conc,
+        multipart_chunksize=part_mb * 1024 * 1024,
+        multipart_threshold=thr_mb * 1024 * 1024,
+        use_threads=True,
+    )
+
+def _make_s3_client():
+    """Crea un cliente S3 alineado con el adapter del core, usando credenciales explícitas.
+
+    - Requiere: S3_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+    - Opcionales: AWS_SESSION_TOKEN, S3_ENDPOINT_URL, S3_FORCE_PATH_STYLE, S3_VERIFY_SSL
+    """
+    s3_region = os.getenv('S3_REGION')
+    endpoint_url = os.getenv('S3_ENDPOINT_URL')
+    force_path_style = bool(int(os.getenv('S3_FORCE_PATH_STYLE', '0')))
+    verify_ssl = bool(int(os.getenv('S3_VERIFY_SSL', '1')))
+
+    access_key = os.getenv('AWS_ACCESS_KEY_ID')
+    secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+    session_token = os.getenv('AWS_SESSION_TOKEN')
+
+    missing = []
+    if not s3_region:
+        missing.append('S3_REGION')
+    if not access_key:
+        missing.append('AWS_ACCESS_KEY_ID')
+    if not secret_key:
+        missing.append('AWS_SECRET_ACCESS_KEY')
+    if missing:
+        raise RuntimeError(f"Configuración S3/AWS incompleta: falta(n) {', '.join(missing)}")
+
+    config = Config(s3={'addressing_style': 'path'} if force_path_style else {})
+    return boto3.client(
+        's3',
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        aws_session_token=session_token,
+        region_name=s3_region,
+        endpoint_url=endpoint_url,
+        config=config,
+        verify=verify_ssl,
+    )
+
+
+def _download_from_s3(s3_path: str, local_path: Path) -> Path:
+    """Descarga archivo desde S3 a path local. Retorna Path local."""
+    bucket, key = _parse_s3_path(s3_path)
+    s3_client = _make_s3_client()
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        s3_client.download_file(bucket, key, str(local_path), Config=_make_s3_transfer_config())
+        logger.info('Descargado desde S3: %s -> %s', s3_path, local_path)
+        return local_path
+    except ClientError as e:
+        logger.error('Error descargando desde S3: %s', e)
+        raise FileNotFoundError(f'No se pudo descargar desde S3: {s3_path}') from e
+
+
+def _upload_to_s3(local_path: Path, s3_path: str) -> str:
+    """Sube archivo local a S3. Retorna ruta S3."""
+    bucket, key = _parse_s3_path(s3_path)
+    s3_client = _make_s3_client()
+
+    try:
+        s3_client.upload_file(str(local_path), bucket, key, Config=_make_s3_transfer_config())
+        logger.info('Subido a S3: %s -> %s', local_path, s3_path)
+        return s3_path
+    except ClientError as e:
+        logger.error('Error subiendo a S3: %s', e)
+        raise RuntimeError(f'No se pudo subir a S3: {s3_path}') from e
+
+
 def _resolve_worker_path(original_input):
-    """Return Path for the worker-local source based on UPLOAD_DIR mapping."""
+    """Return Path para worker-local source, descargando desde S3 si es necesario."""
+    if _is_s3_path(original_input):
+        # Es S3: descargar a temp local
+        # Usar un nombre de archivo temporal basado en el key S3
+        tmp_base = Path(tempfile.gettempdir())
+        # Extraer nombre del archivo del key S3
+        _, key = _parse_s3_path(original_input)
+        filename = key.split('/')[-1] if '/' in key else key
+        tmp_file = tmp_base / f"s3_download_{filename}"
+        return _download_from_s3(original_input, tmp_file)
+
+    # Comportamiento original para paths locales
     video_src = Path(original_input)
     upload_dir = os.getenv('UPLOAD_DIR', '/app/storage/uploads')
     if str(video_src).startswith(MNT_UPLOADS_PREFIX):
@@ -192,13 +300,18 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
     else:
         cmd.extend(['-map', '[v]'])
 
+    ff_threads = os.getenv('FFMPEG_THREADS', '0')        
+    ff_preset  = os.getenv('FFMPEG_PRESET', 'veryfast') 
+    ff_crf     = os.getenv('FFMPEG_CRF', '23') 
+
     out_file = tmpdir / 'output.mp4'
     cmd.extend([
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
+        '-preset', ff_preset,
+        '-crf', ff_crf,
         '-pix_fmt', 'yuv420p',
         '-an',
+        '-threads', ff_threads,
         str(out_file)
     ])
 
@@ -206,23 +319,57 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
 
 
 def _compute_output_path(original_input, processed_dir, video_src):
-    """Compute output Path mirroring /mnt/uploads to PROCESSED_DIR when applicable."""
+    """Compute output path (string). If input is S3, return an S3 URL string.
+
+    For local inputs return a filesystem path string under `processed_dir`.
+    """
     input_str = str(original_input)
+
+    # Si input era S3, output también debe ser S3 (retornamos string)
+    if _is_s3_path(input_str):
+        bucket, key = _parse_s3_path(input_str)
+        if key.startswith('uploads/'):
+            processed_key = key.replace('uploads/', 'processed/', 1)
+        else:
+            processed_key = f'processed/{key}'
+        return f"s3://{bucket}/{processed_key}"
+
+    # Local: construir path bajo processed_dir y devolver como string
     if input_str.startswith(MNT_UPLOADS_PREFIX):
         rel = input_str[len(MNT_UPLOADS_PREFIX):]
         rel = rel.lstrip('/')
-        return Path(processed_dir) / rel
-    return Path(processed_dir) / video_src.name
+        return (Path(processed_dir) / rel).as_posix()
+    return (Path(processed_dir) / video_src.name).as_posix()
 
 
-def _ensure_parent_dir(path):
-    """Try to create parent directory, but don't raise on PermissionError (CI)."""
+def _ensure_parent_dir(path: str | Path):
+    """Try to create parent directory, but accept str or Path.
+
+    - If `path` is an S3 URL (starts with 's3://') do nothing.
+    - If `path` is a string, convert to `Path` before using `.parent`.
+    - Handle PermissionError (CI) by warning instead of raising.
+    """
+    parent = None
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # If caller passed a string, handle S3 or convert to Path
+        if isinstance(path, str):
+            if _is_s3_path(path):
+                # S3 outputs don't have local parent directories
+                return
+            path = Path(path)
+
+        parent = path.parent
+        parent.mkdir(parents=True, exist_ok=True)
     except PermissionError:
-        logger.warning('No permission to create processed directory %s; continuing (CI/test environment?)', path.parent)
+        # parent may be None if conversion failed; use a safe string for the message
+        parent_display = str(parent) if parent is not None else str(path)
+        logger.warning(
+            'No permission to create processed directory %s; continuing (CI/test environment?)',
+            parent_display,
+        )
     except Exception as e:
-        logger.error('Failed creating processed directory %s: %s', path.parent, e)
+        parent_display = str(parent) if parent is not None else str(path)
+        logger.error('Failed creating processed directory %s: %s', parent_display, e)
         raise
 
 
@@ -249,7 +396,14 @@ def _update_db_if_needed(video_id, correlation_id, output_str, db_url):
                 logger.warning('No rows updated for video id=%s', video_id)
 
 
-@shared_task(bind=True, name="tasks.process_video.run")
+@shared_task(
+    bind=True,
+    name="tasks.process_video.run",
+    acks_late=True,
+    reject_on_worker_lost=True,
+    soft_time_limit= int(os.getenv('CELERY_SOFT_TL', '900')), 
+    time_limit     = int(os.getenv('CELERY_HARD_TL', '1200')),
+)
 def run(self, *args, **kwargs):
     """Process a video file:
 
@@ -280,9 +434,16 @@ def run(self, *args, **kwargs):
         args,
         kwargs,
     )
+    # Tracing removed (Tempo rollback)
 
     if not input_path:
         raise ValueError('process_video.run requires input_path as first or second positional argument')
+
+    # Validación estricta: requerimos DB_URL_CORE en el entorno (RDS)
+    db_url_env = os.environ.get('DB_URL_CORE')
+    if not db_url_env:
+        # Fallar temprano si falta configuración crítica
+        raise RuntimeError('DB_URL_CORE no está definido en el entorno y es obligatorio para actualizar el estado en RDS')
 
     # Keep original incoming path (from API message) for later mirroring
     original_input = input_path
@@ -319,62 +480,93 @@ def run(self, *args, **kwargs):
     )
 
     try:
-        # Gather inputs and determine stream indices
-        inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels = _gather_inputs(
-            video_src, intro_path, outro_path, watermark_path
-        )
+        # Process without tracing
+            # Gather inputs and determine stream indices
+            inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels = _gather_inputs(
+                video_src, intro_path, outro_path, watermark_path
+            )
 
-        # Build ffmpeg command and filter_complex
-        cmd, out_file = _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels, tmpdir)
+            # Build ffmpeg command and filter_complex
+            cmd, out_file = _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels, tmpdir)
 
-        # Run and capture output
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if proc.returncode != 0:
-            logger.error('ffmpeg failed: %s', proc.stderr.decode('utf-8', errors='ignore'))
-            raise task_self.retry(exc=RuntimeError('ffmpeg failed'), countdown=30, max_retries=2)
+            # Run and capture output
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if proc.returncode != 0:
+                logger.error('ffmpeg failed: %s', proc.stderr.decode('utf-8', errors='ignore'))
+                raise task_self.retry(exc=RuntimeError('ffmpeg failed'), countdown=30, max_retries=2)
 
-        # At this point, out_file should exist
-        if not out_file.exists():
-            logger.error('Expected output not found at %s', out_file)
-            raise task_self.retry(exc=RuntimeError('output missing'), countdown=10, max_retries=2)
+            # At this point, out_file should exist
+            if not out_file.exists():
+                logger.error('Expected output not found at %s', out_file)
+                raise task_self.retry(exc=RuntimeError('output missing'), countdown=10, max_retries=2)
 
-        # Compute final processed path by mirroring uploads -> processed
-        # Use PROCESSED_DIR (shared storage with API) as base for processed files.
-        processed_dir = os.getenv('PROCESSED_DIR', '/app/storage/processed')
-        output_path = _compute_output_path(original_input, processed_dir, video_src)
+            # Compute final processed path by mirroring uploads -> processed
+            # Use PROCESSED_DIR (shared storage with API) as base for processed files.
+            processed_dir = os.getenv('PROCESSED_DIR', '/app/storage/processed')
+            output_path = _compute_output_path(original_input, processed_dir, video_src)
 
-        # Make sure the parent directory exists. In some CI environments (e.g. when
-        # PROCESSED_DIR is like '/processed') the process may not have permission
-        # to create the directory. In that case we log a warning and continue; the
-        # move operation is often mocked in tests so we should not fail the task
-        # on PermissionError here.
-        _ensure_parent_dir(output_path)
+            # Make sure the parent directory exists. In some CI environments (e.g. when
+            # PROCESSED_DIR is like '/processed') the process may not have permission
+            # to create the directory. In that case we log a warning and continue; the
+            # move operation is often mocked in tests so we should not fail the task
+            # on PermissionError here.
+            _ensure_parent_dir(output_path)
 
-        # Use a POSIX-style string for the returned path so tests are consistent across OS
-        output_str = output_path.as_posix()
+            # Determinar si el output es S3 o local
+            is_s3_output = _is_s3_path(output_path)
 
-        # Move final file into the processed storage location
-        try:
-            # Pass the same string we will return (POSIX) to the move operation; shutil on Windows accepts '/' separator too
-            shutil.move(str(out_file), output_str)
-            logger.info('Moved processed file to %s', output_str)
-        except Exception as e:
-            logger.error('Failed to move output to final location: %s', e)
-            raise task_self.retry(exc=e, countdown=10, max_retries=2)
+            if is_s3_output:
+                # Output es S3: enviar la ruta tal cual (string) a la función de upload
+                output_str = output_path
+                try:
+                    _upload_to_s3(out_file, output_str)
+                    logger.info('Subido archivo procesado a S3: %s', output_str)
+                    # Limpiar archivo local después de subir
+                    try:
+                        out_file.unlink()
+                    except Exception as e:
+                        logger.warning('No se pudo eliminar archivo temporal %s: %s', out_file, e)
+                except Exception as e:
+                    logger.error('Failed to upload output to S3: %s', e)
+                    raise task_self.retry(exc=e, countdown=10, max_retries=2)
+            else:
+                # Output es local: output_path es ya un string de filesystem
+                output_str = output_path
+                try:
+                    shutil.move(str(out_file), output_str)
+                    logger.info('Moved processed file to %s', output_str)
+                except Exception as e:
+                    logger.error('Failed to move output to final location: %s', e)
+                    raise task_self.retry(exc=e, countdown=10, max_retries=2)
 
-        # Update database record for the video if video_id is available (direct DB update)
-        db_url = os.getenv('DATABASE_URL') or os.getenv('DB_URL')
-        _update_db_if_needed(video_id, correlation_id, output_str, db_url)
+            # Update database record for the video if video_id is available (direct DB update)
+            _update_db_if_needed(video_id, correlation_id, output_str, db_url_env)
 
-        # Return the final path so caller (API) can register it
-        return {"status": "ok", "output": output_str}
+            # Return the final path so caller (API) can register it
+            return {"status": "ok", "output": output_str}
 
     except Exception as exc:
         logger.exception('Processing failed')
         raise task_self.retry(exc=exc, countdown=30, max_retries=2)
     finally:
-        # cleanup: keep output for caller; remove temp files except output? We'll keep tmpdir for debugging if needed.
-        # For now, remove temp dir to avoid disk leak
+        # cleanup: remove temp files
+        # Si descargamos desde S3, también limpiar ese archivo
+        try:
+            if _is_s3_path(original_input):
+                # Buscar y limpiar archivo descargado de S3 si existe
+                _, key = _parse_s3_path(original_input)
+                filename = key.split('/')[-1] if '/' in key else key
+                s3_download_path = Path(tempfile.gettempdir()) / f"s3_download_{filename}"
+                if s3_download_path.exists():
+                    try:
+                        s3_download_path.unlink()
+                        logger.debug('Eliminado archivo temporal descargado de S3: %s', s3_download_path)
+                    except Exception as e:
+                        logger.warning('No se pudo eliminar archivo descargado de S3 %s: %s', s3_download_path, e)
+        except Exception:
+            pass
+
+        # Limpiar tmpdir
         try:
             shutil.rmtree(tmpdir)
         except Exception:

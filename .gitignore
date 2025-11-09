@@ -271,3 +271,10 @@ docker-compose.override.yml
 .vscode/
 .env
 infra/.terraform.lock.hcl
+infra/*.json
+K6/*.mp4
+worker/assets/*.mp4
+worker/assets/*.png
+
+# Documentos de soporte y apoyo de entregas
+entrega3/

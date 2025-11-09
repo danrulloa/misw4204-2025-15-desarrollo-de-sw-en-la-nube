@@ -22,8 +22,8 @@ class PublicVideoResponse(BaseModel):
             "example": {
                 "video_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "title": "Tiros de tres en movimiento",
-                "player_name": "Pedro López",
-                "city": "Bogotá",
+                "player_name": "Juan Carlos",
+                "city": "Cartagena",
                 "processed_url": None,
                 "votes": 125
             }
@@ -49,7 +49,7 @@ class RankingItemResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "position": 1,
-                "username": "Pedro López",
+                "username": "Juana de Arco",
                 "city": "Bogotá",
                 "votes": 1530
             }
@@ -67,8 +67,8 @@ class RankingResponse(BaseModel):
                 "rankings": [
                     {
                         "position": 1,
-                        "username": "Pedro López",
-                        "city": "Bogotá",
+                        "username": "Pedro Camargo",
+                        "city": "Leticia",
                         "votes": 1530
                     },
                     {

@@ -13,6 +13,7 @@ ALGORITHM = os.getenv("ALGORITHM")
 EXCLUDED_PATHS = {
     "/",
     "/health",
+    "/api/health",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -27,7 +28,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         root_path = request.scope.get("root_path") or ""
         rel_path = path[len(root_path):] if root_path and path.startswith(root_path) else path
 
-        if path in EXCLUDED_PATHS:
+        # Verificar tanto el path completo como el relativo para compatibilidad
+        if path in EXCLUDED_PATHS or rel_path in EXCLUDED_PATHS:
             return await call_next(request)
 
         public_prefixes = ("/docs", "/redoc", "/openapi", "/public", "/auth")

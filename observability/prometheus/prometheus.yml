@@ -20,29 +20,57 @@ scrape_configs:
     static_configs:
       - targets: ['__MQ_IP__:15692']
 
-  - job_name: postgres_auth
-    static_configs:
-      - targets: ['__DB_IP__:9187']
-
-  - job_name: postgres_core
-    static_configs:
-      - targets: ['__DB_IP__:9188']
-
   - job_name: cadvisor
     static_configs:
       - targets:
-        - "__CORE_IP__:8080"
-        - "__DB_IP__:8080"
+        - "__AUTH_IP__:8080"
         - "__MQ_IP__:8080"
         - "__WORKER_IP__:8080"
 
   - job_name: "api-auth"
     metrics_path: /auth/metrics
     static_configs:
-      - targets: ["__CORE_IP__:8001"]
+      - targets: ["__AUTH_IP__:8001"]
 
-  - job_name: "api-core"
+
+  # Descubrimiento dinámico: Core API (todas las instancias del ASG)
+  - job_name: core-api
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 8000
+        filters:
+          - name: tag:Name
+            values: ["anb-core"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: instance_ip
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+      - source_labels: [__meta_ec2_tag_Project]
+        target_label: project
+
+  # Descubrimiento dinámico: cAdvisor en Core (puerto 8080)
+  - job_name: core-cadvisor
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 8080
+        filters:
+          - name: tag:Name
+            values: ["anb-core"]
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: instance_ip
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+
+  - job_name: "worker"
     metrics_path: /metrics
     static_configs:
-      - targets: ["__CORE_IP__:8000"]
+      - targets: ["__WORKER_IP__:9100"]
 

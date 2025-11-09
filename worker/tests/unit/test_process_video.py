@@ -46,6 +46,8 @@ def test_ffmpeg_failure_invokes_retry(monkeypatch):
     monkeypatch.setenv("PROCESSED_DIR", "/app/storage/processed")
     monkeypatch.setenv("ANB_INOUT_PATH", "/app/assets/inout.mp4")
     monkeypatch.setenv("ANB_WATERMARK_PATH", "/app/assets/watermark.png")
+    # Required DB URL in env (strict requirement by worker)
+    monkeypatch.setenv("DB_URL_CORE", "postgresql+asyncpg://user:pass@host:5432/dbname")
 
     # Mock Path.exists: source video and assets exist; output existence doesn't matter because ffmpeg fails
     def exists_side_effect(p):
@@ -77,7 +79,7 @@ def test_happy_path_moves_and_updates_db(monkeypatch):
     monkeypatch.setenv("PROCESSED_DIR", "/processed")
     monkeypatch.setenv("ANB_INOUT_PATH", "/app/assets/inout.mp4")
     monkeypatch.setenv("ANB_WATERMARK_PATH", "/app/assets/watermark.png")
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@host/db")
+    monkeypatch.setenv("DB_URL_CORE", "postgresql+asyncpg://user:pass@host/db")
 
     # Mock Path.exists: make input and assets exist; also the tmp output file check
     def exists_side_effect(p):

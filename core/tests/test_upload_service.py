@@ -16,12 +16,23 @@ class _StubSession:
         self.added = None
         self.commits = 0
         self.refresh_calls = 0
+        self.flush_calls = 0
+        self.rollback_calls = 0
 
     def add(self, obj):
         self.added = obj
 
     async def commit(self):
         self.commits += 1
+
+    async def flush(self):
+        self.flush_calls += 1
+        # Simular asignación de ID en flush (similar a refresh)
+        if getattr(self.added, "id", None) is None:
+            self.added.id = uuid.uuid4()
+
+    async def rollback(self):
+        self.rollback_calls += 1
 
     async def refresh(self, obj):
         self.refresh_calls += 1
@@ -37,8 +48,14 @@ class _StubStorage:
     def save(self, fileobj, filename, content_type):
         if self.should_fail:
             raise self.should_fail
-        self.calls.append((fileobj, filename, content_type))
+        self.calls.append(("save", filename, content_type))
         return f"/uploads/{filename}"
+
+    def save_with_key(self, fileobj, key, content_type):
+        if self.should_fail:
+            raise self.should_fail
+        self.calls.append(("save_with_key", key, content_type))
+        return f"/{key}"
 
 
 class _StubPublisher:
@@ -67,11 +84,20 @@ def _make_file(name: str = "clip.mp4", data: bytes = b"video") -> UploadFile:
     return _FakeUploadFile(name, data, "video/mp4")  # type: ignore[return-value]
 
 
+class _ImmediateBackgroundTasks:
+    """Stub de BackgroundTasks que ejecuta inmediatamente la tarea agregada."""
+
+    def add_task(self, func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+
 @pytest.fixture
 def service(monkeypatch):
     monkeypatch.setattr(uploads_local.settings, "ALLOWED_VIDEO_FORMATS", {"mp4"})
     monkeypatch.setattr(uploads_local.settings, "MAX_UPLOAD_SIZE_MB", 100)
-    monkeypatch.setattr(uploads_local.settings, "WORKER_INPUT_PREFIX", "/worker/in")
+    # S3 config de pruebas (no se usa realmente porque se parchea STORAGE)
+    monkeypatch.setattr(uploads_local.settings, "S3_BUCKET", "test-bucket")
+    monkeypatch.setattr(uploads_local.settings, "S3_PREFIX", "uploads")
     return LocalUploadService()
 
 
@@ -79,7 +105,8 @@ def service(monkeypatch):
 async def test_upload_service_happy_path(service, monkeypatch):
     storage = _StubStorage()
     publisher = _StubPublisher()
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    # Parchea el STORAGE fijo del módulo a nuestro stub
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: publisher)
 
     db = _StubSession()
@@ -91,23 +118,27 @@ async def test_upload_service_happy_path(service, monkeypatch):
         upload_file=_make_file(),
         user_info=user_info,
         db=db,
+        correlation_id="test-corr-1",
+        background_tasks=_ImmediateBackgroundTasks(),
     )
 
     assert len(storage.calls) == 1
-    _, saved_name, saved_type = storage.calls[0]
+    method, saved_name, saved_type = storage.calls[0]
+    assert method == "save_with_key"
     assert saved_name.endswith(".mp4")
     assert saved_type == "video/mp4"
 
     assert db.added is video
-    assert db.commits == 2
-    assert db.refresh_calls == 2
-    assert video.status is VideoStatus.processing
+    assert db.commits == 1  # Commit temprano
+    assert db.flush_calls == 1  # Flush para obtener ID
+    assert db.refresh_calls == 0  # Ya no necesitamos refresh
+    assert video.status is VideoStatus.uploaded
     assert video.correlation_id == correlation
     assert video.player_first_name == "Ana"
 
     assert publisher.payload == {
         "video_id": str(video.id),
-        "input_path": video.original_path.replace("/uploads", "/worker/in", 1),
+        "input_path": f"s3://{uploads_local.settings.S3_BUCKET}/{video.original_path.lstrip('/')}",
         "correlation_id": correlation,
     }
     assert publisher.closed is True
@@ -117,54 +148,56 @@ async def test_upload_service_happy_path(service, monkeypatch):
 async def test_upload_service_storage_failure(service, monkeypatch):
     storage_error = RuntimeError("disk full")
     storage = _StubStorage(should_fail=storage_error)
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
 
     db = _StubSession()
-    with pytest.raises(HTTPException) as exc:
-        await service.upload(
-            user_id="user-123",
-            title="Gran jugada",
-            upload_file=_make_file(),
-            user_info={},
-            db=db,
-        )
+    # Con pipeline en background, el error ocurre en la tarea y no hay llamada a save_with_key; no se propaga.
+    video, correlation = await service.upload(
+        user_id="user-123",
+        title="Gran jugada",
+        upload_file=_make_file(),
+        user_info={},
+        db=db,
+        correlation_id="test-corr-2",
+        background_tasks=_ImmediateBackgroundTasks(),
+    )
 
-    assert exc.value.status_code == 502
-    assert "disk full" in exc.value.detail
-    assert storage.calls == []
-    assert db.added is None
+    # La llamada retorna sin subir (falló en pipeline inmediatamente). No hubo save_with_key exitoso.
+    # El stub no registra llamadas cuando falla, por eso queda en 0.
+    assert len(storage.calls) == 0
+    assert db.added is not None
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio
 async def test_upload_service_mq_failure_reverts(service, monkeypatch):
     storage = _StubStorage()
     failing_pub = _StubPublisher(should_fail=RuntimeError("mq down"))
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: failing_pub)
 
     db = _StubSession()
-    with pytest.raises(HTTPException) as exc:
-        await service.upload(
-            user_id="user-123",
-            title="Gran jugada",
-            upload_file=_make_file(),
-            user_info={},
-            db=db,
-        )
+    # El fallo de MQ ocurre en el pipeline; la llamada principal retorna 200
+    video, correlation = await service.upload(
+        user_id="user-123",
+        title="Gran jugada",
+        upload_file=_make_file(),
+        user_info={},
+        db=db,
+        correlation_id="test-corr-3",
+        background_tasks=_ImmediateBackgroundTasks(),
+    )
 
-    assert exc.value.status_code == 502
-    assert "No se pudo encolar" in exc.value.detail
-    video = db.added
-    assert video.status is VideoStatus.uploaded
-    assert video.correlation_id is None
-    assert db.commits == 3  # dos commits normales + rollback
+    assert len(storage.calls) == 1
+    assert db.added is not None
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio
 async def test_upload_service_bad_extension(service, monkeypatch):
     storage = _StubStorage()
-    monkeypatch.setattr(uploads_local, "get_storage", lambda: storage)
+    monkeypatch.setattr(uploads_local, "STORAGE", storage)
     monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
 
     db = _StubSession()
@@ -177,6 +210,7 @@ async def test_upload_service_bad_extension(service, monkeypatch):
             upload_file=bad_file,
             user_info={},
             db=db,
+            correlation_id="test-corr-4",
         )
 
     assert exc.value.status_code == 400

@@ -1,33 +1,38 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 import os
 
 
 class Settings(BaseSettings):
     """Configuración de la aplicación"""
-    
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     # Información de la aplicación
     APP_NAME: str = "ANB Rising Stars API"
     DEBUG: bool = False
     API_VERSION: str = "v1"
-    
+
     # Configuración de archivos
     MAX_UPLOAD_SIZE_MB: int = 100
     ALLOWED_VIDEO_FORMATS: List[str] = ["mp4", "avi", "mov"]
     MIN_VIDEO_DURATION_SECONDS: int = 20
     MAX_VIDEO_DURATION_SECONDS: int = 60
-    
+
     # Rutas de almacenamiento
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR","/app/storage/uploads")
-    PROCESSED_DIR: str = os.getenv("PROCESSED_DIR","/app/storage/processed")
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/app/storage/uploads")
+    PROCESSED_DIR: str = os.getenv("PROCESSED_DIR", "/app/storage/processed")
+    PUBLIC_BASE_URL: str | None = os.getenv("PUBLIC_BASE_URL") or None
 
     # Configuración de base de datos
-    DATABASE_URL: str = "postgresql+asyncpg://anb_user:anb_pass@anb-core-db:5432/anb_core"
+    DATABASE_URL: str | None = os.getenv("DATABASE_URL") or None
 
-    
     VIDEO_EXCHANGE: str = os.getenv("VIDEO_EXCHANGE", "video")
     WORKER_INPUT_PREFIX: str = "/mnt/uploads"
-    STORAGE_BACKEND: str = "s3"  # "local" | "s3"
 
     # S3
     S3_BUCKET: str = os.getenv("S3_BUCKET", "anb-basketball-bucket")
@@ -36,10 +41,12 @@ class Settings(BaseSettings):
     S3_ENDPOINT_URL: str | None = os.getenv("S3_ENDPOINT_URL")
     S3_FORCE_PATH_STYLE: bool = bool(int(os.getenv("S3_FORCE_PATH_STYLE", "0")))
     S3_VERIFY_SSL: bool = bool(int(os.getenv("S3_VERIFY_SSL", "1")))
+    S3_PUBLIC_BASE_URL: str | None = os.getenv("S3_PUBLIC_BASE_URL") or None
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # Credenciales AWS (fail-fast, se leen del entorno y se pasan explícitamente a boto3)
+    AWS_ACCESS_KEY_ID: str | None = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY: str | None = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_SESSION_TOKEN: str | None = os.getenv("AWS_SESSION_TOKEN")
 
 
 settings = Settings()

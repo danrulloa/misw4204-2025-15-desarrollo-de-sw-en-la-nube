@@ -1,64 +1,70 @@
-# ANB Rising Stars Showcase - Sistema de Procesamiento de Videos
+# ANB Rising Stars Showcase
 
-Sistema completo para la gestión de videos y votaciones de jugadores de baloncesto de la Asociación Nacional de Baloncesto (ANB). El sistema permite a jugadores aficionados subir videos de sus habilidades, procesarlos automáticamente y permitir que el público vote por sus favoritos.
+**Proyecto Académico** - Sistema de Procesamiento de Videos y Votaciones
 
-**Curso:** MISW4204 - Desarrollo de Software en la Nube
-**Universidad:** Universidad de los Andes
-**Año:** 2025
-
----
-
-## Documentación Completa
-
-**Para documentación detallada del proyecto, arquitectura, guías de despliegue, análisis de capacidad y más, consulta la [Wiki del Proyecto](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki).**
+**Curso:** MISW4204 - Desarrollo de Software en la Nube  
+**Universidad:** Universidad de los Andes  
+**Año:** 2025  
+**Equipo:** Daniel Ulloa, David Cruz, Frans Taboada, Nicolás Infante
 
 ---
 
-## Equipo
+## 📋 Descripción del Proyecto
 
-| Nombre | Correo Institucional |
-|--------|---------------------|
-| Daniel Ricardo Ulloa Ospina | d.ulloa@uniandes.edu.co |
-| David Cruz Vargas | da.cruz84@uniandes.edu.co |
-| Frans Taboada | f.taboada@uniandes.edu.co |
-| Nicolás Infante | n.infanter@uniandes.edu.co |
-
----
-
-## Descripción del Sistema
-
-El sistema ANB Rising Stars Showcase está compuesto por una arquitectura de microservicios orquestados con Docker Compose:
-
-- **API Principal (Core)**: API REST para gestión de videos y votaciones
-- **Servicio de Autenticación**: Manejo de usuarios, sesiones y tokens JWT con refresh tokens
-- **Worker**: Procesamiento asíncrono de videos con Celery y FFmpeg
-- **RabbitMQ**: Broker de mensajería para tareas asíncronas con colas durables y dead-letter queuing
-- **PostgreSQL**: Dos instancias de bases de datos (auth y core)
-- **Nginx**: Proxy inverso y balanceador de carga
-- **Stack de Observabilidad**: Grafana, Prometheus, Loki, Promtail para monitoreo completo
+ANB Rising Stars Showcase es un sistema completo para la gestión de videos y votaciones de jugadores de baloncesto de la Asociación Nacional de Baloncesto (ANB). El sistema permite a jugadores aficionados subir videos de sus habilidades, procesarlos automáticamente y permitir que el público vote por sus favoritos.
 
 ### Características Principales
 
-- API RESTful con 9 endpoints documentados en OpenAPI/Swagger
-- Autenticación y autorización con JWT
-- Procesamiento asíncrono de videos (recorte, normalización, marca de agua)
-- Sistema de votación pública con rankings dinámicos
-- Observabilidad completa con métricas, logs y traces distribuidos
-- Pruebas unitarias con cobertura superior al 80%
-- Colección Postman con tests automatizados
+- ✅ API RESTful con 9 endpoints documentados en OpenAPI/Swagger
+- ✅ Autenticación y autorización con JWT y refresh tokens
+- ✅ Procesamiento asíncrono de videos (redimensionamiento, conversión, marca de agua)
+- ✅ Sistema de votación pública con rankings dinámicos
+- ✅ Observabilidad completa con métricas, logs y traces distribuidos
+- ✅ Pruebas unitarias con cobertura superior al 80%
+- ✅ Colección Postman con tests automatizados
 
 ---
 
-## Inicio Rápido
+## 🎯 Versiones del Proyecto
 
-### Prerrequisitos
+Este proyecto ha evolucionado a lo largo de **3 entregas académicas**, cada una representando una versión diferente del sistema con mejoras en escalabilidad, infraestructura y servicios gestionados.
 
-- Docker Desktop (o Docker Engine) instalado y corriendo
-- Docker Compose
+### Resumen Comparativo
 
-### Levantar el Sistema
+| Aspecto | **Entrega 1** | **Entrega 2** | **Entrega 3** |
+|---------|---------------|---------------|---------------|
+| **Ambiente** | Docker Compose Local | AWS EC2 (6 instancias) | AWS con servicios gestionados |
+| **Base de Datos** | PostgreSQL en contenedores | PostgreSQL en contenedores | Amazon RDS PostgreSQL |
+| **Almacenamiento** | Volúmenes Docker locales | Volúmenes EBS | Amazon S3 |
+| **Balanceador** | Nginx (contenedor) | Nginx (instancia EC2) | Application Load Balancer (ALB) |
+| **Escalabilidad** | Manual (recrear contenedores) | Manual (recrear instancias) | Automática (Auto Scaling Group) |
+| **Alta Disponibilidad** | No | No | Sí (ALB + Multi-AZ) |
+| **Infraestructura** | Docker Compose | Terraform + EC2 | Terraform + AWS (RDS, S3, ALB, ASG) |
+| **Observabilidad** | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki + CloudWatch |
+
+---
+
+## 📦 Entrega 1: API REST y Procesamiento Asíncrono
+
+**Objetivo:** Implementación de una API REST escalable con orquestación de tareas asíncronas en ambiente local con Docker Compose.
+
+### Características
+
+- API RESTful con 9 endpoints
+- Autenticación JWT con refresh tokens
+- Procesamiento asíncrono con Celery y RabbitMQ
+- PostgreSQL en contenedores Docker
+- Almacenamiento local en volúmenes Docker
+- Stack de observabilidad (Prometheus, Grafana, Loki)
+- Nginx como reverse proxy
+
+### Inicio Rápido
 
 ```bash
+# Prerrequisitos
+- Docker Desktop (o Docker Engine)
+- Docker Compose
+
 # Clonar el repositorio
 git clone https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube.git
 cd misw4204-2025-15-desarrollo-de-sw-en-la-nube
@@ -66,27 +72,14 @@ cd misw4204-2025-15-desarrollo-de-sw-en-la-nube
 # Levantar todos los servicios
 docker compose up -d
 
-# Verificar estado de los servicios
+# Verificar estado
 docker compose ps
 
 # Cargar datos de prueba (opcional)
 docker compose exec anb_api python seed_data.py
 ```
 
-### Detener el Sistema
-
-```bash
-docker compose down
-
-# Para eliminar también los volúmenes (base de datos)
-docker compose down -v
-```
-
----
-
-## Acceso a Servicios
-
-Una vez levantados los servicios, puedes acceder a:
+### Acceso a Servicios
 
 | Servicio | URL | Credenciales |
 |----------|-----|--------------|
@@ -95,17 +88,141 @@ Una vez levantados los servicios, puedes acceder a:
 | RabbitMQ Management | http://localhost:15672 | rabbit / rabbitpass |
 | Grafana | http://localhost:8080/grafana/ | admin / admin |
 
-Para más detalles sobre cómo usar estos servicios, consulta la [Wiki - Cómo Iniciar](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Cómo-Iniciar).
+### Documentación
+
+- [Documentación Completa - Entrega 1](docs/Entrega_1/README.md)
+- [Wiki del Proyecto](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki)
 
 ---
 
-## Estructura del Proyecto
+## ☁️ Entrega 2: Despliegue en AWS
+
+**Objetivo:** Migración de la aplicación de Docker Compose local a AWS, desplegando en múltiples instancias EC2.
+
+### Características
+
+- 6 instancias EC2 independientes (t3.micro)
+- PostgreSQL en contenedores distribuidos
+- Nginx como reverse proxy en instancia dedicada
+- Volúmenes EBS para almacenamiento
+- Infraestructura como Código con Terraform
+- Despliegue automatizado con user-data scripts
+- Stack de observabilidad distribuido
+
+### Componentes Desplegados
+
+1. **Web Server**: Nginx + reverse proxy
+2. **Core Services**: API Core + Auth Service
+3. **Worker**: Celery + FFmpeg para procesamiento
+4. **Database**: PostgreSQL (contenedores)
+5. **Message Queue**: RabbitMQ
+6. **Observability**: Prometheus + Grafana + Loki
+
+### Inicio Rápido
+
+```bash
+# Prerrequisitos
+- Terraform instalado
+- AWS CLI configurado
+- Credenciales de AWS Academy
+
+# Configurar variables
+cd infra
+cp terraform.tfvars.example terraform.tfvars
+# Editar terraform.tfvars con tus valores
+
+# Desplegar infraestructura
+terraform init
+terraform plan
+terraform apply
+
+# Obtener IPs de las instancias
+terraform output
+```
+
+### Documentación
+
+- [Documentación Completa - Entrega 2](docs/Entrega_2/README.md)
+- [Cambios vs Entrega 1](docs/Entrega_2/cambios.md)
+- [Infraestructura Terraform](infra/README.md)
+
+---
+
+## 🚀 Entrega 3: Escalabilidad en la Capa Web
+
+**Objetivo:** Implementación de escalabilidad automática y servicios gestionados de AWS para alta disponibilidad y escalabilidad.
+
+### Características
+
+- **Application Load Balancer (ALB)**: Balanceador de carga público con health checks
+- **Auto Scaling Group (ASG)**: Escalado automático del Core API (1-3 instancias)
+- **Amazon RDS PostgreSQL**: 2 instancias gestionadas (core y auth)
+- **Amazon S3**: Almacenamiento de objetos para videos
+- **CloudWatch**: Monitoreo y métricas de AWS
+- Alta disponibilidad multi-AZ
+- Recuperación automática ante fallos
+
+### Cambios Principales vs Entrega 2
+
+- ✅ Eliminada instancia Web Nginx → Reemplazada por ALB
+- ✅ Eliminada instancia DB EC2 → Reemplazada por RDS
+- ✅ Almacenamiento EBS → Migrado a S3
+- ✅ Instancias fijas Core API → Auto Scaling Group
+- ✅ Observabilidad mejorada con CloudWatch
+
+### Inicio Rápido
+
+```bash
+# Prerrequisitos
+- Terraform instalado
+- AWS CLI configurado
+- Credenciales de AWS Academy con permisos para RDS, S3, ALB, ASG
+- Assets del worker (watermark.png, inout.mp4) en worker/assets/
+
+# Configurar variables
+cd infra
+cp terraform.tfvars.example terraform.tfvars
+# Editar terraform.tfvars:
+# - rds_password: Contraseña para RDS
+# - assets_inout_path: Ruta a worker/assets/inout.mp4
+# - assets_wm_path: Ruta a worker/assets/watermark.png
+
+# Desplegar infraestructura
+terraform init
+terraform plan
+terraform apply
+
+# Obtener DNS del ALB
+terraform output alb_dns_name
+```
+
+### Acceso a Servicios
+
+Una vez desplegado, accede a los servicios a través del DNS del ALB:
+
+| Servicio | URL | Credenciales |
+|----------|-----|--------------|
+| API Principal | http://`<alb-dns>`/api/docs | - |
+| Auth Service | http://`<alb-dns>`/auth/docs | - |
+| Grafana | http://`<alb-dns>`/grafana/ | admin / admin |
+| Prometheus | http://`<alb-dns>`/prometheus/ | - |
+| RabbitMQ | http://`<alb-dns>`/rabbitmq/ | rabbit / rabbitpass |
+
+### Documentación
+
+- [Documentación Completa - Entrega 3](docs/entrega3/entrega_3.md)
+- [Arquitectura Actual]([entrega3/ARQUITECTURA_ACTUAL.md](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-3#arquitectura-entrega-3))
+- [Infraestructura Terraform](infra/README.md)
+
+---
+
+## 📚 Estructura del Proyecto
 
 ```
 .
 ├── core/                  # API principal (FastAPI)
 │   ├── app/               # Código de la aplicación
-│   ├── storage/           # Almacenamiento de videos
+│   ├── storage/           # Almacenamiento de videos (local o S3)
 │   ├── tests/             # Tests unitarios
 │   └── README.md          # Documentación de desarrollo local
 ├── auth_service/          # Servicio de autenticación
@@ -114,31 +231,35 @@ Para más detalles sobre cómo usar estos servicios, consulta la [Wiki - Cómo I
 │   └── README.md          # Documentación de desarrollo local
 ├── worker/                # Worker de procesamiento (Celery)
 │   ├── tasks/             # Tareas de Celery
+│   ├── assets/            # Assets (watermark, intro/outro)
 │   └── README.md          # Documentación de desarrollo local
-├── nginx/                 # Configuración de Nginx
-│   └── nginx.conf         # Configuración del proxy inverso
+├── infra/                 # Infraestructura como Código (Terraform)
+│   ├── main.tf            # Definición de recursos AWS
+│   ├── userdata.sh.tftpl  # Scripts de configuración
+│   └── README.md          # Guía de despliegue
+├── nginx/                 # Configuración de Nginx (Entrega 1)
 ├── rabbitmq/              # Configuración de RabbitMQ
-│   ├── definitions.json   # Definición de colas/exchanges
-│   └── ARQUITECTURA_RABBITMQ.md  # Documentación técnica
 ├── observability/         # Stack de observabilidad
 │   ├── grafana/           # Configuración de Grafana
 │   ├── prometheus/        # Configuración de Prometheus
-│   ├── loki/              # Configuración de Loki
-│   ├── promtail/          # Configuración de Promtail
-│   └── tempo/             # Configuración de Tempo
+│   └── loki/              # Configuración de Loki
 ├── collections/           # Colección de Postman
-│   ├── ANB_Basketball_API.postman_collection.json
-│   ├── ANB_Basketball_API.postman_environment.json
-│   └── README.md          # Guía de uso de Postman
+│   └── ANB_Basketball_API.postman_collection.json
 ├── docs/                  # Documentación del proyecto
-│   └── Entrega_1/         # Documentación Entrega 1
-├── compose.yaml           # Orquestación de servicios
+│   ├── Entrega_1/         # Documentación Entrega 1
+│   ├── Entrega_2/         # Documentación Entrega 2
+│   └── entrega3/          # Documentación Entrega 3
+├── capacity-planning/     # Plan y análisis de pruebas de carga
+│   ├── plan_de_pruebas.md
+│   └── pruebas_de_carga_entrega3.md
+├── compose.yaml           # Docker Compose (Entrega 1)
+├── docker-compose.multihost.yml  # Docker Compose multihost (Entrega 2-3)
 └── README.md              # Este archivo
 ```
 
 ---
 
-## Stack Tecnológico
+## 🛠️ Stack Tecnológico
 
 ### Backend y APIs
 - Python 3.12
@@ -147,7 +268,7 @@ Para más detalles sobre cómo usar estos servicios, consulta la [Wiki - Cómo I
 - JWT (autenticación)
 
 ### Bases de Datos
-- PostgreSQL 15 (2 instancias)
+- PostgreSQL 15 (contenedores o RDS)
 
 ### Procesamiento Asíncrono
 - Celery (task queue)
@@ -155,120 +276,95 @@ Para más detalles sobre cómo usar estos servicios, consulta la [Wiki - Cómo I
 - FFmpeg (procesamiento de video)
 
 ### Infraestructura
-- Nginx 1.25 (reverse proxy)
-- Docker y Docker Compose
-- Ubuntu (base images)
+- Docker y Docker Compose (Entrega 1)
+- Terraform (Entrega 2-3)
+- AWS EC2, RDS, S3, ALB, ASG (Entrega 2-3)
+- Nginx 1.25 (reverse proxy - Entrega 1-2)
 
 ### Observabilidad
 - Grafana (visualización)
 - Prometheus (métricas)
 - Loki (logs)
-- Promtail (log collection)
-- Exportadores: nginx-exporter, pg-exporter, cAdvisor
+- CloudWatch (métricas AWS - Entrega 3)
+
 
 ---
 
-## Documentación Adicional
+## 🔧 Comandos Útiles
 
-### Wiki del Proyecto
-La documentación completa se encuentra en la [Wiki de GitHub](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki):
-
-- [Cómo Iniciar](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Cómo-Iniciar) - Guía de instalación y configuración
-- [Observabilidad](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Observabilidad) - Stack de monitoreo y logs
-- [Testing](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Testing) - Pruebas unitarias y Postman
-- [Arquitectura](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Arquitectura) - Diagramas y decisiones de diseño
-- [Pruebas de Carga](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Pruebas-de-Carga) - Análisis de capacidad
-- [Entrega 1](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-1) - Resumen de la primera entrega
-
-### READMEs de Servicios
-- [core/README.md](core/README.md) - API Principal (desarrollo local)
-- [auth_service/README.md](auth_service/README.md) - Servicio de Autenticación (desarrollo local)
-- [worker/README.md](worker/README.md) - Worker de Procesamiento (desarrollo local)
-- [collections/README.md](collections/README.md) - Guía de Colección Postman
-- [rabbitmq/ARQUITECTURA_RABBITMQ.md](rabbitmq/ARQUITECTURA_RABBITMQ.md) - Arquitectura de RabbitMQ
-
-### Documentación de Entregas
-- [docs/Entrega_1/README.md](docs/Entrega_1/README.md) - Documentación Entrega 1
-
----
-
-## Comandos Útiles
-
-### Ver logs de servicios
+### Entrega 1 (Docker Compose)
 
 ```bash
-docker compose logs -f anb_api          # API principal
-docker compose logs -f anb-auth-service # Servicio de autenticación
-docker compose logs -f worker           # Worker de procesamiento
-docker compose logs -f rabbitmq         # RabbitMQ
-```
+# Levantar servicios
+docker compose up -d
 
-### Reiniciar servicios
+# Ver logs
+docker compose logs -f anb_api
+docker compose logs -f worker
 
-```bash
-docker compose restart anb_api
-docker compose restart worker
-```
+# Detener servicios
+docker compose down
 
-### Ejecutar comandos en contenedores
-
-```bash
-# Shell en el contenedor de la API
-docker compose exec anb_api bash
-
-# Cargar datos de prueba
-docker compose exec anb_api python seed_data.py
-
-# Ver colas de RabbitMQ
-docker compose exec rabbitmq rabbitmqctl list_queues name messages consumers
-```
-
-### Reconstruir servicios
-
-```bash
-# Reconstruir con cambios en el código
+# Reconstruir servicios
 docker compose up -d --build --force-recreate
-
-# Limpiar y reconstruir todo
-docker compose down -v
-docker compose up -d --build
 ```
+
+### Entrega 2-3 (Terraform)
+
+```bash
+# Inicializar Terraform
+cd infra
+terraform init
+
+# Planificar cambios
+terraform plan
+
+# Aplicar cambios
+terraform apply
+
+# Ver outputs
+terraform output
+
+# Destruir infraestructura
+terraform destroy
+```
+
 
 ---
 
-## Troubleshooting
+## 📝 Notas Importantes
 
-### Los servicios no levantan
+### AWS Academy
 
-```bash
-# Ver logs detallados
-docker compose logs
+Este proyecto utiliza **AWS Academy** para el despliegue en la nube. Las limitaciones incluyen:
 
-# Reconstruir desde cero
-docker compose down -v
-docker compose up -d --build
-```
+- Máximo 9 instancias EC2 simultáneas
+- Máximo 32 vCPUs
+- Credenciales temporales (requieren renovación)
+- Sin acceso completo a IAM
 
-### Puerto en uso
+### Versiones y Tags
 
-Si el puerto 8080 está en uso, edita `compose.yaml`:
+- **v1.0.0**: Entrega 1 - API REST y Procesamiento Asíncrono
+- **v2.0.0**: Entrega 2 - Despliegue en AWS
+- **v3.0.0**: Entrega 3 - Escalabilidad en la Capa Web (rama `develop`)
 
-```yaml
-nginx:
-  ports:
-    - "8081:80"  # Cambiar 8080 por otro puerto
-```
+---
 
-### Videos no se procesan
+## 👥 Equipo
 
-1. Verificar que el worker está corriendo:
-   ```bash
-   docker compose ps worker
-   ```
+| Nombre | Correo Institucional |
+|--------|---------------------|
+| Daniel Ricardo Ulloa Ospina | d.ulloa@uniandes.edu.co |
+| David Cruz Vargas | da.cruz84@uniandes.edu.co |
+| Frans Taboada | f.taboada@uniandes.edu.co |
+| Nicolás Infante | n.infanter@uniandes.edu.co |
 
-2. Ver logs del worker:
-   ```bash
-   docker compose logs -f worker
-   ```
 
-3. Verificar colas de RabbitMQ en http://localhost:8080/rabbitmq
+
+## 
+Este es un proyecto académico desarrollado para el curso MISW4204 - Desarrollo de Software en la Nube de la Universidad de los Andes.
+
+---
+
+**Última actualización:** Noviembre 2025

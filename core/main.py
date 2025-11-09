@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+import logging
+from logging import StreamHandler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
@@ -15,6 +17,8 @@ from app.exceptions import (
     validation_exception_handler,
     general_exception_handler,
 )
+from app.observability.logging_filters import install_uvicorn_access_filter
+from app.observability.log_formatters import KeyValueExtraFormatter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +29,18 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await engine.dispose()
+
+# Instala un filtro para suprimir logs de acceso de /health y /metrics
+install_uvicorn_access_filter()
+
+# Configura 'anb' para emitir extra fields como key=value, visible en Loki/Promtail
+_app_base_logger = logging.getLogger("anb")
+_app_base_logger.handlers = []  # evitar reutilizar handlers de uvicorn
+kv_handler = StreamHandler()
+kv_handler.setFormatter(KeyValueExtraFormatter())
+_app_base_logger.addHandler(kv_handler)
+_app_base_logger.setLevel(logging.INFO)
+_app_base_logger.propagate = False
 
 app = FastAPI(
     root_path="/api",
@@ -54,6 +70,8 @@ app.add_exception_handler(APIException, api_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
+
+# Tracing deshabilitado (Tempo retirado)
 
 from app.api import videos, public, auth
 app.include_router(videos.router)

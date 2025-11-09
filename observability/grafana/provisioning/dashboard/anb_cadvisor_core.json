@@ -1,0 +1,256 @@
+{
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "9.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "2.0.0" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "type": "dashboard",
+        "name": "Annotations & Alerts",
+        "enable": true,
+        "hide": false,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "type": "gauge",
+      "title": "CPU uso (%) — contenedor",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"$container\"}[1m])) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Memoria uso (%) — contenedor (si tiene límite)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"$container\"}) / sum by (name) (container_spec_memory_limit_bytes{name=~\"$container\"} > 0) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Memoria uso absoluto (si NO hay límite)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"$container\"})",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU por contenedor (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"$container\"}[1m]) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memoria working set por contenedor",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"$container\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Network RX/TX (bytes/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_network_receive_bytes_total{name=~\"$container\"}[1m]))",
+          "legendFormat": "RX {{name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (name) (rate(container_network_transmit_bytes_total{name=~\"$container\"}[1m]))",
+          "legendFormat": "TX {{name}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Filesystem uso (%)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "100 * (container_fs_usage_bytes{name=~\"$container\"} / clamp_min(container_fs_limit_bytes{name=~\"$container\"}, 1))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "OOM kills (últimos 5m)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 24 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (name) (increase(container_oom_events_total{name=~\"$container\"}[5m]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Reinicios (últimos 10m)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 24 },
+  "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "sum by (name) (changes(container_start_time_seconds{name=~\"$container\"}[10m]))",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Uptime (min) — contenedor",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+      "fieldConfig": { "defaults": { "unit": "m" }, "overrides": [] },
+      "targets": [
+        {
+          "expr": "(time() - container_start_time_seconds{name=~\"$container\"}) / 60",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "fields": "", "values": false, "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": ["anb", "cadvisor", "containers"],
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "type": "query",
+        "hide": 0,
+        "datasource": { "type": "prometheus", "uid": "prometheus-main" },
+        "query": "label_values(container_cpu_usage_seconds_total, name)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "sort": 1,
+        "current": {}
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s","10s","30s","1m","5m","15m","30m","1h"] },
+  "timezone": "",
+  "title": "ANB — cAdvisor (Contenedores)",
+  "version": 1,
+  "weekStart": ""
+}

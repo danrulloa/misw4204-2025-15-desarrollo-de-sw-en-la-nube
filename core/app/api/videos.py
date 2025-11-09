@@ -3,15 +3,17 @@ Router de gestión de videos
 Endpoints para subir, listar, consultar y eliminar videos
 """
 
-from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request
+from fastapi import APIRouter, status, HTTPException, UploadFile, File, Form, Response, Depends, Path, Request, BackgroundTasks
+import logging
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import os, jwt
 from app.database import get_session
-from app.models.video import Video, VideoStatus
 from app.services.uploads._init_ import get_upload_service
 from app.services.uploads.base import UploadServicePort
-from app.services.storage.utils import abs_storage_path
+from app.services.videos._init_ import get_video_query_service
+from app.services.videos.base import VideoQueryServicePort
+from app.services.storage.utils import storage_path_to_public_url
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 from app.schemas.video import (
@@ -23,6 +25,7 @@ from app.schemas.video import (
 
 router = APIRouter(prefix="/videos", tags=["Videos"])
 _bearer = HTTPBearer(auto_error=True)
+log = logging.getLogger("anb.api.videos")
 
 def _current_user_id(creds: HTTPAuthorizationCredentials) -> str:
     try:
@@ -62,29 +65,40 @@ def _get_user_from_request(request: Request) -> dict:
 async def upload_video(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     video_file: UploadFile = File(..., description="Archivo de video"),
     title: str = Form(..., description="Título del video"),
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> VideoUploadResponse:
+    log.info("Entrando a /upload: " + title)
+    # Correlation: primero en el recorrido
+    correlation_id = request.headers.get("x-correlation-id") or f"corr-{uuid.uuid4().hex[:12]}"
     user_id = _current_user_id(creds)
     user_info = _get_user_from_request(request)
 
     service: UploadServicePort = get_upload_service()
+    
+    # Ejecutar el flujo, propagando correlation_id
     video, correlation_id = await service.upload(
         user_id=user_id,
         title=title,
         upload_file=video_file,
         user_info=user_info,
         db=db,
+        correlation_id=correlation_id,
+        background_tasks=background_tasks,
     )
-
+    log.info("Salió del upload y prepara la respuesta: " + correlation_id)
     response.headers["Location"] = f"/api/videos/{video.id}"
-    return VideoUploadResponse(
+    result = VideoUploadResponse(
         message="Video subido correctamente. Procesamiento en curso.",
         video_id=str(video.id),
         task_id=correlation_id,
     )
+    # Log de salida
+    log.info("Ultima linea: " + correlation_id)
+    return result
 
 
 @router.get(
@@ -97,32 +111,31 @@ async def upload_video(
 async def get_my_videos(
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
+    service: VideoQueryServicePort = Depends(get_video_query_service),
     limit: int = 20,
     offset: int = 0,
 ) -> List[VideoListItemResponse]:
     user_id = _current_user_id(creds)
-
-    stmt = (
-        select(Video)
-        .where(Video.user_id == user_id)
-        .order_by(Video.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+    videos = await service.list_user_videos(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+        db=db,
     )
-    res = await db.execute(stmt)
-    videos = res.scalars().all()
 
-    return [
-        VideoListItemResponse(
-            video_id=str(v.id),
-            title=v.title,
-            status=v.status,
-            uploaded_at=v.created_at,
-            processed_at=v.processed_at,
-            processed_url=None,
+    items: List[VideoListItemResponse] = []
+    for v in videos:
+        items.append(
+            VideoListItemResponse(
+                video_id=str(v.id),
+                title=v.title,
+                status=v.status,
+                uploaded_at=v.created_at,
+                processed_at=v.processed_at,
+                processed_url=storage_path_to_public_url(v.processed_path),
+            )
         )
-        for v in videos
-    ]
+    return items
 
 
 @router.get(
@@ -136,18 +149,10 @@ async def get_video_detail(
     video_id: str = Path(..., description="UUID del video"),
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
+    service: VideoQueryServicePort = Depends(get_video_query_service),
 ) -> VideoResponse:
     user_id = _current_user_id(creds)
-
-    res = await db.execute(select(Video).where(Video.id == video_id))
-    video: Video | None = res.scalar_one_or_none()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video no encontrado")
-
-    if str(video.user_id) != str(user_id):
-        raise HTTPException(status_code=403, detail="El video no pertenece al usuario")
-
-    votes_count = 0
+    video = await service.get_user_video(user_id=user_id, video_id=video_id, db=db)
 
     return VideoResponse(
         video_id=str(video.id),
@@ -155,9 +160,9 @@ async def get_video_detail(
         status=video.status,
         uploaded_at=video.created_at,
         processed_at=video.processed_at,
-        original_url=None,
-        processed_url=None,
-        votes=votes_count,
+        original_url=storage_path_to_public_url(video.original_path),
+        processed_url=storage_path_to_public_url(video.processed_path),
+        votes=0,
     )
 
 
@@ -172,39 +177,12 @@ async def delete_video(
     video_id: str,
     db: AsyncSession = Depends(get_session),
     creds: HTTPAuthorizationCredentials = Depends(_bearer),
+    service: VideoQueryServicePort = Depends(get_video_query_service),
 ) -> VideoDeleteResponse:
     user_id = _current_user_id(creds)
-
-    res = await db.execute(select(Video).where(Video.id == video_id))
-    video: Video | None = res.scalar_one_or_none()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video no encontrado")
-
-    if str(video.user_id) != str(user_id):
-        raise HTTPException(status_code=403, detail="El video no pertenece al usuario")
-
-    if video.status == VideoStatus.processed:
-        raise HTTPException(
-            status_code=400,
-            detail="El video ya está listo para votación; no puede eliminarse."
-        )
-
-    try:
-        if video.original_path:
-            p = abs_storage_path(video.original_path)
-            if p.is_file():
-                p.unlink(missing_ok=True)
-        if video.processed_path:
-            p = abs_storage_path(video.processed_path)
-            if p.is_file():
-                p.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-    await db.delete(video)
-    await db.commit()
+    deleted_id = await service.delete_user_video(user_id=user_id, video_id=video_id, db=db)
 
     return VideoDeleteResponse(
         message="El video ha sido eliminado exitosamente.",
-        video_id=str(video_id),
+        video_id=str(deleted_id),
     )
