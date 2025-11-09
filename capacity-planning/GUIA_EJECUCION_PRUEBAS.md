@@ -148,7 +148,7 @@ Test-Path $env:USERPROFILE\.ssh\vockey.pem
 ssh -i $env:USERPROFILE\.ssh\vockey.pem ubuntu@<PUBLIC_IP>
 ```
 
-**Ejemplo real**:
+**Ejemplo**:
 ```powershell
 ssh -i $env:USERPROFILE\.ssh\vockey.pem ubuntu@98.81.192.56
 ```
@@ -173,8 +173,6 @@ whoami
 hostname
 # Debería mostrar: ip-xxx-xxx-xxx-xxx
 ```
-
-**🔧 Si hay problemas de conexión**: Consulta `infra/TROUBLESHOOTING_SSH_K6.md` para diagnóstico detallado.
 
 ---
 
