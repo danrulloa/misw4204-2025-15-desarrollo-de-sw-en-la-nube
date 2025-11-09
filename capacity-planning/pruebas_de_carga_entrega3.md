@@ -263,9 +263,89 @@ El throughput sostenido de 129 MB/s con picos de hasta 2,355 MB/s demuestra la e
 
 ---
 
-## 2. Análisis Comparativo con Entregas Anteriores
+## 2. Resultados de Pruebas del Worker (Escenario 2)
 
-### 2.1 Comparación de Métricas Clave
+### 2.1 Objetivo
+
+Medir la capacidad de procesamiento del worker de videos, determinando cuántos videos por minuto puede procesar mediante transcodificación con FFmpeg. Este escenario evalúa el rendimiento de la capa asíncrona del sistema.
+
+### 2.2 Configuración de Infraestructura
+
+**Instancia Worker**:
+- **Tipo**: EC2 t3.large
+- **vCPUs**: 2
+- **RAM**: 8 GB
+- **Almacenamiento**: EBS gp3 de 30 GB
+
+**Servicios**:
+- **Worker**: Celery + FFmpeg
+- **RabbitMQ**: Message broker (EC2 t3.small)
+- **Amazon S3**: Almacenamiento (entrada/salida)
+- **RDS PostgreSQL**: Base de datos de estados
+
+**Configuración**:
+- **Concurrencia**: 1 worker activo
+- **Tamaño de video**: 3.53 MB (`inout (1).mp4`)
+
+### 2.3 Resultados del Throughput
+
+**Prueba ejecutada**: 115 videos encolados y procesados
+
+| Métrica | Resultado |
+|---------|-----------|
+| Videos procesados (última hora) | 115 |
+| Throughput promedio (últimos 5 min) | 23.00 videos/min |
+| Throughput (videos/segundo) | 0.383 videos/s |
+| Throughput promedio (última hora) | 1.92 videos/min |
+| Videos fallidos | 0 |
+| Tasa de éxito | 100% |
+| CPU promedio | ~35% |
+
+**Estado RabbitMQ**:
+- Mensajes al inicio: 115
+- Mensajes al final: 0
+- Tasa de procesamiento: 100%
+
+### 2.4 Análisis de Resultados
+
+**Capacidad Identificada**:
+- El worker procesa **23 videos/minuto** de manera sostenida
+- Tiempo promedio por video: **~2.6 segundos**
+- Sin fallos durante el procesamiento de 115 videos
+
+**Desglose del Tiempo de Procesamiento** (estimado):
+1. Descarga desde S3: ~0.5-1.0 s
+2. Procesamiento FFmpeg: ~0.5-1.0 s
+3. Subida a S3: ~0.5-1.0 s
+4. Actualización RDS: ~0.1 s
+
+**Observación de CPU**:
+El uso de CPU del 35% indica que la instancia t3.large tiene capacidad adicional disponible. El cuello de botella actual es la **concurrencia limitada a 1 worker**, no los recursos de hardware.
+
+### 2.5 Capacidad del Worker - Resumen
+
+| Métrica | Valor |
+|---------|-------|
+| Throughput máximo | 23 videos/min |
+| Tamaño de video probado | 3.53 MB |
+| Concurrencia actual | 1 worker |
+| Tasa de éxito | 100% |
+| Cuello de botella | Concurrencia (no recursos) |
+
+### 2.6 Integración con Escenario 1
+
+**Relación Upload → Procesamiento**:
+- **Tasa de entrada máxima** (Escenario 1): 42.7 videos/min
+- **Tasa de procesamiento** (Escenario 2): 23 videos/min
+- **Desfase**: 19.7 videos/min se acumularían en cola bajo carga máxima sostenida
+
+**Conclusión**: El worker actual puede procesar aproximadamente el 54% de la carga máxima de uploads. Durante picos de tráfico, la cola de RabbitMQ crecería temporalmente hasta que la carga disminuya.
+
+---
+
+## 3. Análisis Comparativo con Entregas Anteriores
+
+### 3.1 Comparación de Métricas Clave
 
 **Capacidad de Usuarios Concurrentes**:
 
@@ -299,7 +379,7 @@ El throughput sostenido de 129 MB/s con picos de hasta 2,355 MB/s demuestra la e
 | Entrega 2 | 56 MB/s | 12% |
 | Entrega 3 | 133 MB/s | 137% vs E2 |
 
-### 2.2 Evolución de Cuellos de Botella
+### 3.2 Evolución de Cuellos de Botella
 
 **Entrega 1** (Docker Compose Local):
 - **Cuello de botella identificado**: I/O de disco y configuración de Nginx
@@ -318,7 +398,7 @@ El throughput sostenido de 129 MB/s con picos de hasta 2,355 MB/s demuestra la e
 - **Mejoras implementadas**: S3 eliminó el problema de I/O, RDS mejoró la eficiencia de BD, ALB optimizó la distribución de carga
 - **Limitación actual**: Capacidad de procesamiento de aplicación bajo concurrencia extrema
 
-### 2.3 Impacto de las Mejoras Arquitectónicas
+### 3.3 Impacto de las Mejoras Arquitectónicas
 
 **Migración a Amazon S3**:
 - Eliminó completamente el cuello de botella de I/O de disco
@@ -340,7 +420,7 @@ El throughput sostenido de 129 MB/s con picos de hasta 2,355 MB/s demuestra la e
 - Potencial para escalar hasta 3 instancias cuando sea necesario
 - Provee foundation para escalabilidad futura
 
-### 2.4 Análisis de Tasa de Éxito
+### 3.4 Análisis de Tasa de Éxito
 
 | Entrega | Tasa de Éxito (Carga Baja) | Tasa de Éxito (Carga Alta) |
 |---------|---------------------------|---------------------------|
@@ -352,9 +432,9 @@ La Entrega 3 es la primera en demostrar estabilidad bajo carga extrema (50 VUs) 
 
 ---
 
-## 3. Conclusiones y Recomendaciones
+## 4. Conclusiones y Recomendaciones
 
-### 3.1 Conclusiones Generales
+### 4.1 Conclusiones Generales
 
 La Entrega 3 representa un salto cualitativo y cuantitativo en capacidad, rendimiento y escalabilidad del sistema ANB Rising Stars Showcase. Los resultados de las pruebas de carga demuestran mejoras sustanciales en todas las métricas críticas:
 
@@ -368,7 +448,33 @@ La Entrega 3 representa un salto cualitativo y cuantitativo en capacidad, rendim
 
 **Eliminación de Cuellos de Botella Históricos**: La migración a S3 eliminó completamente los problemas de I/O de disco que afectaron la Entrega 1, y la implementación de RDS resolvió las ineficiencias de comunicación observadas en la Entrega 2.
 
-### 3.2 Rendimiento del Core API
+**Procesamiento Asíncrono**: Por primera vez se midió la capacidad del worker, obteniendo un throughput de 23 videos/minuto con una tasa de éxito del 100% en 115 videos procesados.
+
+### 4.2 Rendimiento del Worker
+
+**Capacidad Identificada**:
+- 23 videos/minuto de throughput sostenido
+- Tiempo promedio de 2.6 segundos por video (3.53 MB)
+- Tasa de éxito del 100% en 115 videos procesados
+- CPU utilización del 35% (capacidad disponible)
+
+**Cuello de Botella Actual**:
+El worker está configurado con concurrencia de 1, lo cual limita el throughput a un video a la vez. El uso de CPU del 35% indica que los recursos de hardware no son el limitante, sino la configuración de concurrencia.
+
+**Capacidad vs Demanda**:
+- Tasa máxima de uploads (Escenario 1): 42.7 videos/min
+- Capacidad de procesamiento (Escenario 2): 23 videos/min
+- Déficit potencial: 19.7 videos/min bajo carga pico sostenida
+
+Esto significa que el worker puede manejar aproximadamente el 54% de la carga máxima de uploads. Durante picos de tráfico prolongados, la cola de RabbitMQ crecería hasta que la carga disminuya.
+
+**Recomendación de Escalado**:
+Para igualar la capacidad de uploads, se requeriría:
+1. Aumentar la concurrencia a 2-3 workers en la misma instancia (CPU permite), o
+2. Agregar una segunda instancia de worker, o
+3. Implementar Auto Scaling para workers basado en profundidad de cola de RabbitMQ
+
+### 4.3 Rendimiento del Core API
 
 **Capacidad Identificada**:
 - 50 usuarios concurrentes sostenibles
@@ -385,7 +491,7 @@ Las pruebas no activaron el Auto Scaling Group debido a que la carga no alcanzó
 **Cuello de Botella Actual**:
 El componente de waiting domina la latencia total (3.11s p95 bajo 50 VUs), indicando que el procesamiento de aplicación es el limitante. Esto no es un problema de recursos de hardware sino de eficiencia algorítmica en el manejo de uploads concurrentes.
 
-### 3.3 Comparación con SLOs del Proyecto
+### 4.4 Comparación con SLOs del Proyecto
 
 **SLOs Originales** (definidos en documentación de Entrega 1):
 - p95 de endpoints ≤ 1s
@@ -409,7 +515,7 @@ El SLO de p95 ≤ 1s no se cumple bajo carga extrema (50 VUs), pero es important
 
 ---
 
-## 4. Información de Ejecución
+## 5. Información de Ejecución
 
 **Fecha de Ejecución**: 9 de noviembre de 2025
 
