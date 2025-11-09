@@ -1,6 +1,10 @@
+"""
+S3 storage adapter (sin dependencia hasta que se use).
+"""
+
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import BinaryIO, Optional
 
 class S3StorageAdapter:
@@ -73,7 +77,8 @@ class S3StorageAdapter:
         )
 
     def save(self, fileobj: BinaryIO, filename: str, content_type: str) -> str:
-        today = datetime.utcnow()
+        # Use timezone-aware UTC datetime to appease static analyzers (Sonar)
+        today = datetime.now(timezone.utc)
         day_dir = f"{today:%Y}/{today:%m}/{today:%d}"
         safe_name = f"{uuid.uuid4().hex}-{os.path.basename(filename)}"
         key = f"{self.prefix}/{day_dir}/{safe_name}"

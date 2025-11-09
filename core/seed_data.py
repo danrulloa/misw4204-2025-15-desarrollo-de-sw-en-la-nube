@@ -4,25 +4,28 @@ Crea videos en estado 'processed' para poder probar los endpoints públicos
 """
 import asyncio
 import sys
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# Agregar el directorio raíz al path
+# Agregar el directorio raíz al path (permite ejecutar el script directamente)
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.database import get_session, engine, Base
+from app.database import get_session, engine, Base, SessionLocal
 from app.models.video import Video, VideoStatus
 from app.models.vote import Vote
+
+logger = logging.getLogger(__name__)
 
 
 async def seed_videos():
     """Crea videos de prueba en estado processed"""
-    
+
     # Crear tablas si no existen
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    async for session in get_session():
+
+    async with SessionLocal() as session:
         # Datos de prueba
         videos_data = [
             {
@@ -91,27 +94,27 @@ async def seed_videos():
                 "duration_seconds": 22,
             },
         ]
-        
+
         created_videos = []
-        print("🎬 Creando videos de prueba...")
-        
+        logger.info("🎬 Creando videos de prueba...")
+
         for idx, video_data in enumerate(videos_data, 1):
             video = Video(
                 **video_data,
-                processed_at=datetime.utcnow() - timedelta(hours=idx)
+                processed_at=datetime.now(timezone.utc) - timedelta(hours=idx),
             )
             session.add(video)
             created_videos.append(video)
-            print(f"  ✅ Video {idx}: {video_data['title']} - {video_data['player_city']}")
-        
+            logger.info("  ✅ Video %s: %s - %s", idx, video_data["title"], video_data["player_city"])
+
         await session.commit()
-        
+
         # Refrescar para obtener los IDs
         for video in created_videos:
             await session.refresh(video)
-        
-        print(f"\n🗳️  Creando votos de prueba...")
-        
+
+        logger.info("\n🗳️  Creando votos de prueba...")
+
         # Crear algunos votos de ejemplo
         votes_data = [
             # Video 1 (Carlos - Medellín): 5 votos
@@ -145,52 +148,51 @@ async def seed_videos():
             {"video_id": created_videos[4].id, "user_id": "voter13@example.com"},
             {"video_id": created_videos[4].id, "user_id": "voter14@example.com"},
         ]
-        
+
         for vote_data in votes_data:
             vote = Vote(**vote_data)
             session.add(vote)
-        
+
         await session.commit()
-        
-        print(f"  ✅ {len(votes_data)} votos creados")
-        
-        print("\n✨ Datos de prueba cargados exitosamente!\n")
-        print("📊 Resumen:")
-        print(f"  - Videos procesados: {len(created_videos)}")
-        print(f"  - Ciudades: Bogotá (2), Medellín (2), Cali (1)")
-        print(f"  - Votos totales: {len(votes_data)}")
-        print("\n🔗 Prueba los endpoints:")
-        print("  - GET http://localhost:8080/api/public/videos")
-        print("  - GET http://localhost:8080/api/public/videos?city=Bogotá")
-        print("  - GET http://localhost:8080/api/public/rankings")
-        
-        break  # Solo necesitamos una sesión
+
+        logger.info("  ✅ %s votos creados", len(votes_data))
+
+        logger.info("\n✨ Datos de prueba cargados exitosamente!\n")
+        logger.info("📊 Resumen:")
+        logger.info("  - Videos procesados: %s", len(created_videos))
+        logger.info("  - Ciudades: Bogotá (2), Medellín (2), Cali (1)")
+        logger.info("  - Votos totales: %s", len(votes_data))
+        logger.info("\n🔗 Prueba los endpoints:")
+        logger.info("  - GET http://localhost:8080/api/public/videos")
+        logger.info("  - GET http://localhost:8080/api/public/videos?city=Bogotá")
+        logger.info("  - GET http://localhost:8080/api/public/rankings")
 
 
 async def clear_data():
     """Limpia los datos de prueba"""
-    async for session in get_session():
+    async with SessionLocal() as session:
         from sqlalchemy import delete
         
-        print("🗑️  Limpiando datos de prueba...")
-        
+        logger.info("🗑️  Limpiando datos de prueba...")
+
         # Eliminar votos primero (por FK constraint)
         await session.execute(delete(Vote))
         await session.commit()
-        print("  ✅ Votos eliminados")
-        
+        logger.info("  ✅ Votos eliminados")
+
         # Eliminar videos
         await session.execute(delete(Video))
         await session.commit()
-        print("  ✅ Videos eliminados")
-        
-        print("✨ Base de datos limpiada\n")
-        break
+        logger.info("  ✅ Videos eliminados")
+
+        logger.info("✨ Base de datos limpiada\n")
 
 
 if __name__ == "__main__":
     import sys
-    
+    import logging as _logging
+
+    _logging.basicConfig(level=_logging.INFO)
     if len(sys.argv) > 1 and sys.argv[1] == "--clear":
         asyncio.run(clear_data())
     else:

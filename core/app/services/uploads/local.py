@@ -1,9 +1,10 @@
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Tuple
 import time
+import asyncio
 import tempfile
 import shutil
 
@@ -81,7 +82,7 @@ class LocalUploadService:
             title,
         )
 
-        ext, size_bytes = self._validate_ext_and_size(upload_file, correlation_id=correlation_id)
+        ext, size_bytes = self._validate_ext_and_size(upload_file)
         logger.info(
             "upload:validated corr=%s ext=%s size_bytes=%s",
             correlation_id,
@@ -90,7 +91,7 @@ class LocalUploadService:
         )
 
     # Precomputar key S3 para responder sin esperar el upload
-        today = datetime.utcnow()
+        today = datetime.now(timezone.utc)
         day_dir = f"{today:%Y}/{today:%m}/{today:%d}"
         basename = f"{uuid.uuid4().hex}.{ext}"
         s3_key = f"{settings.S3_PREFIX.strip('/')}/{day_dir}/{uuid.uuid4().hex}-{basename}"
@@ -124,14 +125,20 @@ class LocalUploadService:
         input_path = f"s3://{settings.S3_BUCKET}/{s3_key}"  # pasado al worker
 
         # Copiar contenido a un archivo temporal para evitar 'seek of closed file' en background
+        # Ejecutar IO bloqueante en un hilo para no bloquear el event loop
         tmp_t0 = time.perf_counter()
-        upload_file.file.seek(0)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-        try:
-            shutil.copyfileobj(upload_file.file, tmp)
-        finally:
-            tmp.close()
-        tmp_path = tmp.name
+
+        def _write_temp(fobj, ext_local):
+            # run in thread
+            fobj.seek(0)
+            tmpf = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext_local}")
+            try:
+                shutil.copyfileobj(fobj, tmpf)
+            finally:
+                tmpf.close()
+            return tmpf.name
+
+        tmp_path = await asyncio.to_thread(_write_temp, upload_file.file, ext)
         tmp_ms = (time.perf_counter() - tmp_t0) * 1000.0
         logger.info(
             "upload:temp:copied corr=%s path=%s size_bytes=%s elapsed_ms=%.1f",
@@ -167,8 +174,7 @@ class LocalUploadService:
         )
         return video, correlation_id
 
-    def _validate_ext_and_size(self, file: UploadFile, *, correlation_id: str | None = None):
-
+    def _validate_ext_and_size(self, file: UploadFile):
         _, ext = os.path.splitext(file.filename or "")
         ext = (ext or "").lower().lstrip(".")
         allowed = {x.lower() for x in settings.ALLOWED_VIDEO_FORMATS}
