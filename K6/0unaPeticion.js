@@ -6,12 +6,12 @@ import { check } from 'k6'
 // Configurable via environment variables
 // Para AWS: usar ALB DNS name obtenido de terraform output alb_dns_name
 // Ejemplo: k6 run K6/0unaPeticion.js -e BASE_URL=http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com
-const BASE_URL = __ENV.BASE_URL || 'http://anb-public-alb-62343362.us-east-1.elb.amazonaws.com'
+const BASE_URL = __ENV.BASE_URL || 'http://anb-public-alb-170093693.us-east-1.elb.amazonaws.com'
 const UPLOAD_PATH = __ENV.UPLOAD_PATH || '/api/videos/upload'
-const FILE_PATH = __ENV.FILE_PATH || 'test.mp4'
+const FILE_PATH = __ENV.FILE_PATH || 'MiJugadaPostman.mp4'
 const TITLE = __ENV.TITLE || 'Tiro de tres puntos en movimiento'
 // ACCESS_TOKEN must be provided via env var (no auth calls in this script)
-const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huQGV4YW1wbGUuY29tIiwidXNlcl9pZCI6MSwidGVuYW50X2lkIjowLCJwZXJtaXNzaW9ucyI6W10sImZpcnN0X25hbWUiOiJKb2huIiwibGFzdF9uYW1lIjoiRG9lIiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYyMzUwNzA4LCJpYXQiOjE3NjIzMTQ3MDgsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.MqdcuxaztY_53cYxsJbkOhltCxKDWlDsrWsbidH_b6Y'
+const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwZWRyby5sb3BlekBleGFtcGxlLmNvbSIsInVzZXJfaWQiOjEsInRlbmFudF9pZCI6MCwicGVybWlzc2lvbnMiOltdLCJmaXJzdF9uYW1lIjoiUGVkcm8iLCJsYXN0X25hbWUiOiJMXHUwMGYzcGV6IiwiY2l0eSI6IkJvZ290XHUwMGUxIiwiZXhwIjoxNzYyNzIzNTA0LCJpYXQiOjE3NjI2ODc1MDQsInRva2VuX3R5cGUiOiJhY2Nlc3MifQ.InYhxSpb5eGwHq-yUz9gJ0dzyf4834z9Ek4yVOhAqLQ'
 
 export const options = {
     // Single run with a single VU
