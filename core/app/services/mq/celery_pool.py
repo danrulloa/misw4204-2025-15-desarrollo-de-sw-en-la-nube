@@ -20,10 +20,16 @@ logger = logging.getLogger("anb.celery_pool")
 
 
 def _broker_url() -> str:
-    url = os.getenv("CELERY_BROKER_URL", "sqs://").strip()
-    if not url:
-        raise RuntimeError("CELERY_BROKER_URL vacío: define sqs:// en el entorno")
-    return url
+    """Devuelve broker URL normalizado (sin query ?region=...).
+
+    La región debe ir en broker_transport_options, no embebida en la URL, porque
+    Celery/kombu no acepta 'region' como parámetro de Connection._init_params.
+    """
+    raw = os.getenv("CELERY_BROKER_URL", "sqs://").strip() or "sqs://"
+    # Limpiar patrones antiguos como sqs://?region=us-east-1
+    if raw.startswith("sqs://") and "?region=" in raw:
+        raw = "sqs://"
+    return raw
 
 
 def _queue_name() -> str:
@@ -49,20 +55,24 @@ class CeleryPool:
         broker_url = _broker_url()
         queue_name = _queue_name()
         region = os.getenv("AWS_REGION", "us-east-1").strip() or "us-east-1"
+        backend = os.getenv("CELERY_RESULT_BACKEND", "rpc://").strip() or "rpc://"
 
-        logger.info("Inicializando cliente Celery singleton (SQS) broker=%s queue=%s region=%s", broker_url, queue_name, region)
-        app = Celery('api_client', broker=broker_url, backend=os.getenv("CELERY_RESULT_BACKEND", "rpc://"))
+        logger.info(
+            "Inicializando cliente Celery singleton (SQS) broker=%s queue=%s region=%s",
+            broker_url, queue_name, region
+        )
+        app = Celery('api_client', broker=broker_url, backend=backend)
 
-        # Transport options específicos para SQS
+        # Transport options específicos para SQS (region aquí, NO en la URL)
         app.conf.broker_transport_options = {
             'region': region,
             'visibility_timeout': int(os.getenv('SQS_VISIBILITY_TIMEOUT', '60')),
             'wait_time_seconds': int(os.getenv('SQS_WAIT_TIME_SECONDS', '20')),
         }
         app.conf.task_default_queue = queue_name
-        # Prefetch 1 para evitar acumular mensajes invisibles que no procesamos aún
-        app.conf.worker_prefetch_multiplier = 1
+        app.conf.worker_prefetch_multiplier = 1  # Prefetch 1 evita retener mensajes invisibles largos
         app.conf.task_acks_late = True
+        app.conf.task_reject_on_worker_lost = True
 
         self._celery_app = app
         logger.info("Cliente Celery SQS listo")

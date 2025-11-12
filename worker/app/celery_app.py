@@ -5,7 +5,7 @@ import traceback
 import os
 import time
 
-from kombu import Exchange, Queue
+from kombu import Exchange, Queue  # (Legacy import - exchanges ya no usados con SQS, se podría eliminar)
 
 # Prometheus metrics (export to /metrics via start_http_server)
 try:
@@ -22,14 +22,15 @@ logger = logging.getLogger(__name__)
 
 # Subclass Celery to hold shared constants (avoids duplicating literals like 'video.dlq')
 class VideoCelery(Celery):
-    # Exchanges / routing keys used across the module
-    VIDEO_EXCHANGE = 'video'
-    VIDEO_DLX_EXCHANGE = 'video-dlx'
-    VIDEO_DLQ_ROUTING_KEY = 'video.dlq'
-    VIDEO_RETRY_EXCHANGE = 'video-retry'
+    """Celery subclass (reservado para futura extensión). Exchanges heredados de Rabbit removidos."""
+    pass
 
 
-BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
+BROKER_URL_RAW = os.getenv('CELERY_BROKER_URL', 'sqs://').strip() or 'sqs://'
+# Normalizar broker (quitar query ?region= us-east-1 si quedó de configuraciones anteriores)
+if BROKER_URL_RAW.startswith('sqs://') and '?region=' in BROKER_URL_RAW:
+    BROKER_URL_RAW = 'sqs://'
+BROKER_URL = BROKER_URL_RAW
 RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'rpc://')
 
 # Instantiate our Celery subclass so we can reference the constants from it
@@ -138,7 +139,7 @@ if _PROM_AVAILABLE:
 # handler para registrar fallos y empujar metadata a la DLQ (informativo)
 from celery.signals import task_failure  # noqa: E402
 import json  # noqa: E402
-from kombu import Connection, Producer  # noqa: E402
+from kombu import Connection, Producer  # noqa: E402  # (No se usa para publicar DLQ manual con SQS; podría limpiarse)
 from celery.signals import task_prerun, task_postrun  # noqa: E402
 
 
