@@ -87,6 +87,9 @@ DATABASE_URL=postgresql://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb
 SQS_BROKER_URL=${sqs_broker_url}
 SQS_QUEUE_NAME=${sqs_queue_name}
 
+# Logging (persist Loki push URL para que compose lo conserve tras reinicios)
+LOKI_URL=${LOKI_URL_VALUE}
+
 # Upstreams (WEB)
 
 # WEB upstreams
@@ -127,6 +130,7 @@ EOF
 # (OTLP/Tempo removido) No se configuran variables OTEL en .env
 
 # Solo exportamos LOKI_URL en runtime (los contenedores lo leen por env/compose)
+# Export para esta sesión (docker compose inicial) - persistido también en .env arriba
 export LOKI_URL="$LOKI_URL_VALUE"
 
 # (OTLP/Tempo removido) No se espera por endpoint de trazas

@@ -5,8 +5,6 @@ import traceback
 import os
 import time
 
-from kombu import Exchange, Queue  # (Legacy import - exchanges ya no usados con SQS, se podría eliminar)
-
 # Prometheus metrics (export to /metrics via start_http_server)
 try:
     from prometheus_client import Counter, Histogram, start_http_server
@@ -22,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Subclass Celery to hold shared constants (avoids duplicating literals like 'video.dlq')
 class VideoCelery(Celery):
-    """Celery subclass (reservado para futura extensión). Exchanges heredados de Rabbit removidos."""
+    """Celery subclass (reservado por si se requiere extender en el futuro)."""
     pass
 
 
@@ -139,7 +137,6 @@ if _PROM_AVAILABLE:
 # handler para registrar fallos y empujar metadata a la DLQ (informativo)
 from celery.signals import task_failure  # noqa: E402
 import json  # noqa: E402
-from kombu import Connection, Producer  # noqa: E402  # (No se usa para publicar DLQ manual con SQS; podría limpiarse)
 from celery.signals import task_prerun, task_postrun  # noqa: E402
 
 
