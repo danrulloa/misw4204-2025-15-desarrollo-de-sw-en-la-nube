@@ -107,7 +107,7 @@ async def test_upload_service_happy_path(service, monkeypatch):
     publisher = _StubPublisher()
     # Parchea el STORAGE fijo del módulo a nuestro stub
     monkeypatch.setattr(uploads_local, "STORAGE", storage)
-    monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: publisher)
+    monkeypatch.setattr(uploads_local, "QueuePublisher", lambda: publisher)
 
     db = _StubSession()
     user_info = {"first_name": "Ana", "last_name": "Player", "city": "Bogota"}
@@ -149,7 +149,7 @@ async def test_upload_service_storage_failure(service, monkeypatch):
     storage_error = RuntimeError("disk full")
     storage = _StubStorage(should_fail=storage_error)
     monkeypatch.setattr(uploads_local, "STORAGE", storage)
-    monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
+    monkeypatch.setattr(uploads_local, "QueuePublisher", lambda: _StubPublisher())
 
     db = _StubSession()
     # Con pipeline en background, el error ocurre en la tarea y no hay llamada a save_with_key; no se propaga.
@@ -175,7 +175,7 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
     storage = _StubStorage()
     failing_pub = _StubPublisher(should_fail=RuntimeError("mq down"))
     monkeypatch.setattr(uploads_local, "STORAGE", storage)
-    monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: failing_pub)
+    monkeypatch.setattr(uploads_local, "QueuePublisher", lambda: failing_pub)
 
     db = _StubSession()
     # El fallo de MQ ocurre en el pipeline; la llamada principal retorna 200
@@ -198,7 +198,7 @@ async def test_upload_service_mq_failure_reverts(service, monkeypatch):
 async def test_upload_service_bad_extension(service, monkeypatch):
     storage = _StubStorage()
     monkeypatch.setattr(uploads_local, "STORAGE", storage)
-    monkeypatch.setattr(uploads_local, "RabbitPublisher", lambda: _StubPublisher())
+    monkeypatch.setattr(uploads_local, "QueuePublisher", lambda: _StubPublisher())
 
     db = _StubSession()
     bad_file = _make_file(name="clip.avi")

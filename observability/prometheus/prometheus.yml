@@ -16,15 +16,12 @@ scrape_configs:
       - targets: ['__OBS_IP__:9090']
 
 
-  - job_name: rabbitmq
-    static_configs:
-      - targets: ['__MQ_IP__:15692']
+  # Removed RabbitMQ scraping (migrated to AWS SQS)
 
   - job_name: cadvisor
     static_configs:
       - targets:
         - "__AUTH_IP__:8080"
-        - "__MQ_IP__:8080"
         - "__WORKER_IP__:8080"
 
   - job_name: "api-auth"

@@ -14,10 +14,14 @@ services:
     env_file: [ .env ]
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - CELERY_BROKER_URL=${RABBITMQ_URL}
+      - CELERY_BROKER_URL=${SQS_BROKER_URL}
       - CELERY_RESULT_BACKEND=rpc://
       - DATABASE_URL=${DB_URL_CORE} 
       - JWT_SECRET=${JWT_SECRET:-changeme}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME}
     volumes:
       - ./core/storage:/app/storage
     restart: unless-stopped
@@ -118,65 +122,7 @@ services:
     networks: [ internal ]
 
  
-  # ================== MQ ==================
-  rabbitmq:
-    profiles: ["mq"]
-    image: rabbitmq:3.10-management
-    container_name: rabbitmq
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-rabbit}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-rabbitpass}
-      # Serve management UI under /rabbitmq so it works behind the ALB path
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbitmq_management path_prefix "/rabbitmq"
-    ports:
-      - "5672:5672"                      
-      - "15672:15672"                    
-      - "15692:15692"                    # Prometheus exporter (rabbitmq_prometheus)
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
-    healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
-      interval: 15s
-      timeout: 15s
-      retries: 5
-    restart: unless-stopped
-    networks: [ internal ]
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "5" }
-
-  cadvisor-mq:
-    profiles: ["mq","obs-agent"]
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor-mq
-    privileged: true
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    restart: unless-stopped
-    networks: [ internal ]
-
-  promtail-mq:
-    profiles: ["mq","obs-agent"]
-    image: grafana/promtail:2.9.4
-    container_name: promtail-mq
-    command:
-      - -config.file=/etc/promtail/config.yml
-      - -config.expand-env=true
-    environment:
-      - LOKI_URL=${LOKI_URL}
-    volumes:
-      - ./observability/promtail/config.yml:/etc/promtail/config.yml:ro
-      - /var/log:/var/log
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    restart: unless-stopped
-    networks: [ internal ]
+  # ================== MQ (Removed: migrated to AWS SQS) ==================
 
   # ================== WORKER ==================
   worker:
@@ -186,8 +132,12 @@ services:
     env_file: [ .env ]
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - CELERY_BROKER_URL=${RABBITMQ_URL}
+      - CELERY_BROKER_URL=${SQS_BROKER_URL}
       - CELERY_RESULT_BACKEND=rpc://
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - SQS_QUEUE_NAME=${SQS_QUEUE_NAME}
     command: celery -A celery_app worker --loglevel=INFO
     restart: unless-stopped
     ports:
@@ -287,7 +237,6 @@ networks:
     name: anb-internal
 
 volumes:
-  rabbitmq_data:
   grafana_data:
   loki_data:
   

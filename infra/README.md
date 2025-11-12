@@ -11,11 +11,10 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
 
 **Topología actualizada:**
 
-### Instancias EC2 (6-7 VMs)
+### Instancias EC2 (5-6 VMs)
 - **CORE**: API principal (`anb_api`) + cAdvisor + promtail  
 - **AUTH**: Servicio de autenticación (`anb-auth-service`) + cAdvisor + promtail  
 - **DB** (legacy, opcional): PostgreSQL local - **Ya no se usa si RDS está configurado**
-- **MQ**: RabbitMQ (broker/UI) + cAdvisor + promtail  
 - **WORKER**: Celery worker + cAdvisor + promtail  
 - **OBS**: Prometheus + Grafana + Loki
 
@@ -28,18 +27,21 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
   - Carpeta `uploads/` para videos originales
   - Carpeta `processed/` para videos procesados
    - Destrucción: configurado con `force_destroy = true` para eliminar el bucket aunque tenga objetos y versiones
+- **SQS (Celery broker)**: Colas gestionadas para tareas Celery
+   - Cola principal: `video_tasks`
+   - Dead-letter queue (DLQ): `video_dlq` (redrive policy maxReceiveCount=5)
+   - Usar con Celery transport `sqs://` y variable `SQS_QUEUE_NAME`
 - **Application Load Balancer (ALB)**: Balanceador de carga público
-  - Recibe tráfico HTTP en puerto 80
+   - Recibe tráfico HTTP en puerto 80
    - Distribuye carga a instancias Core y Auth
-  - Routing a servicios de observabilidad (Grafana, Prometheus, Loki, RabbitMQ UI)
+   - Routing a servicios de observabilidad (Grafana, Prometheus, Loki)
 
-**Security Groups (8):**
+**Security Groups (7):**
 - `alb` - Application Load Balancer (HTTP 80 público)
 - `core` - Instancia Core (solo API)
 - `auth` - Instancia Auth (puerto 8001)
 - `db` - Instancia DB legacy (solo si se mantiene)
 - `worker` - Instancia Worker
-- `mq` - Instancia RabbitMQ
 - `obs` - Instancia Observabilidad
 - `rds` - RDS PostgreSQL (Core, Auth y Worker acceden en 5432)
 
@@ -64,7 +66,7 @@ El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por 
    - `aws_lb_target_group.tg_api` - Target group para instancias Core (API puerto 8000)
    - `aws_lb_target_group.tg_auth` - Target group para instancias Auth (Auth puerto 8001)
    - `aws_lb_target_group.tg_grafana`, `tg_prom`, `tg_loki` - Target groups para observabilidad
-   - `aws_lb_target_group.tg_rmq` - Target group para RabbitMQ UI
+   - (RabbitMQ eliminado — no se crea `tg_rmq`)
    - Listeners y reglas de routing para distribuir tráfico según paths (`/api/*`, `/auth/*`, `/grafana/*`, etc.)
 
 ### Variables agregadas
@@ -94,6 +96,8 @@ El script de user-data ahora:
 - `rds_endpoints` - Endpoints de RDS (Core y Auth)
 - `rds_addresses` - Direcciones IP/hostnames de RDS
 - `s3_bucket_name` - Nombre del bucket S3 creado
+- `sqs_queue_url` - URL de la cola SQS principal (`video_tasks`)
+- `sqs_dlq_url` - URL de la DLQ (`video_dlq`)
 
 ---
 
@@ -279,7 +283,7 @@ terraform state rm aws_security_group.web    2>/dev/null || true
 terraform state rm aws_security_group.core   2>/dev/null || true
 terraform state rm aws_security_group.db     2>/dev/null || true
 terraform state rm aws_security_group.worker 2>/dev/null || true
-terraform state rm aws_security_group.mq     2>/dev/null || true
+
 terraform state rm aws_security_group.obs    2>/dev/null || true
 
 # Importa tus SG (IDs de ejemplo; reemplaza por los tuyos)
@@ -287,7 +291,7 @@ terraform import aws_security_group.web    sg-01cb0a8bdb9b6ef2b
 terraform import aws_security_group.core   sg-02514540403ee6516
 terraform import aws_security_group.db     sg-01af27cfa756c56af
 terraform import aws_security_group.worker sg-05621f0b6ce6c29d8
-terraform import aws_security_group.mq     sg-05ca1bcc54417ef1d
+
 terraform import aws_security_group.obs    sg-02ed299e0f587147e
 ```
 
@@ -446,8 +450,9 @@ terraform output public_ips
 - `rds_endpoints` - Endpoints de RDS (Core y Auth)
 - `rds_addresses` - Hostnames de RDS
 - `s3_bucket_name` - Nombre del bucket S3
-- `public_ips` - IPs públicas (core, auth, mq, worker, obs)
-- `private_ips` - IPs privadas (core, auth, mq, worker, obs)
+-- `public_ips` - IPs públicas (core, auth, worker, obs)
+-- `private_ips` - IPs privadas (core, auth, worker, obs)
+   *RabbitMQ eliminado.*
 
 ### 5.4 ¿Qué hacer con los outputs?
 
@@ -525,7 +530,7 @@ Si usaste el `user-data` provisto, cada instancia EC2 ya debe:
 3. Generar `.env` automáticamente con:
    - **RDS endpoints** (si están configurados)
    - **S3 bucket** (si está configurado)
-   - IPs de otras instancias (MQ, etc.)
+   - IPs de otras instancias (Core, Auth, Worker, Obs)
 4. Levantar servicios con Docker Compose según el `ROLE`
 
 **El `user-data` configura automáticamente:**
@@ -616,13 +621,16 @@ S3_PREFIX=uploads
 S3_FORCE_PATH_STYLE=0
 S3_VERIFY_SSL=1
 
-# RabbitMQ (obtener IP privada desde: terraform output public_ips)
-RABBITMQ_DEFAULT_USER=rabbit
-RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_PORT=5672
-RABBITMQ_VHOST=/
-RABBITMQ_URL=amqp://rabbit:rabbitpass@<MQ_IP_PRIVADA>:5672/%2F
-RABBITMQ_HOST=<MQ_IP_PRIVADA>
+# Celery + SQS (broker)
+# Usa credenciales temporales de AWS Academy o perfil IAM vinculado a la instancia
+AWS_REGION=us-east-1
+# Si usas variables de entorno:
+AWS_ACCESS_KEY_ID=ASIA...
+AWS_SECRET_ACCESS_KEY=...
+AWS_SESSION_TOKEN=...
+SQS_QUEUE_NAME=video_tasks
+CELERY_BROKER_URL=sqs://
+CELERY_RESULT_BACKEND=rpc://
 
 # JWT & Security
 ACCESS_TOKEN_SECRET_KEY=mi_clave_de_acceso_secreta
@@ -657,20 +665,20 @@ S3_BUCKET=anb-basketball-bucket-xxxxx  # Reemplazar con tu bucket
 S3_REGION=us-east-1
 S3_PREFIX=uploads
 
-# RabbitMQ
-RABBITMQ_DEFAULT_USER=rabbit
-RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_PORT=5672
-RABBITMQ_VHOST=/
-RABBITMQ_URL=amqp://rabbit:rabbitpass@<MQ_IP_PRIVADA>:5672/%2F
-RABBITMQ_HOST=<MQ_IP_PRIVADA>
+# Celery + SQS (broker)
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=ASIA...
+AWS_SECRET_ACCESS_KEY=...
+AWS_SESSION_TOKEN=...
+SQS_QUEUE_NAME=video_tasks
+CELERY_BROKER_URL=sqs://
+CELERY_RESULT_BACKEND=rpc://
 
 # Base de datos (para actualizar estado de videos procesados)
 DATABASE_URL=postgresql://anb_user:TU_PASSWORD_RDS@anb-core-rds.xxxxx.us-east-1.rds.amazonaws.com:5432/anb_core
 
 # Celery
-CELERY_BROKER_URL=${RABBITMQ_URL}
-CELERY_RESULT_BACKEND=rpc://
+# (si definiste CELERY_BROKER_URL arriba con SQS, no necesitas redefinir aquí)
 
 # Loki
 LOKI_URL=http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com/loki/api/v1/push
@@ -684,7 +692,7 @@ LOKI_URL=http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com/loki/api/v1/pus
    # etc.
    ```
 
-> **Nota**: Los valores de RDS, S3 y ALB se obtienen desde los outputs de Terraform. Reemplaza los placeholders (`xxxxx`, `<MQ_IP_PRIVADA>`, etc.) con los valores reales.
+> **Nota**: Los valores de RDS, S3, SQS y ALB se obtienen desde los outputs de Terraform. Reemplaza los placeholders (`xxxxx`, etc.) con los valores reales.
 
 ---
 
@@ -707,7 +715,7 @@ echo $ALB_DNS
 - **Auth OpenAPI**: `http://$ALB_DNS/auth/openapi.json`
 - **Grafana**: `http://$ALB_DNS/grafana/` (admin/admin)
 - **Prometheus**: `http://$ALB_DNS/prometheus/`
-- **RabbitMQ UI**: `http://$ALB_DNS/rabbitmq/` (rabbit/rabbitpass)
+  
 
 ### Verificar que los videos se suben a S3
 
@@ -815,12 +823,11 @@ scrape_configs:
       - targets: ["${WEB_IP}:9113"]
   - job_name: cadvisor
     static_configs:
-      - targets:
-          - "${WEB_IP}:8080"
-          - "${CORE_IP}:8080"
-          - "${DB_IP}:8080"
-          - "${MQ_IP}:8080"
-          - "${WORKER_IP}:8080"
+        - targets:
+           - "${WEB_IP}:8080"
+           - "${CORE_IP}:8080"
+              - "${DB_IP}:8080"
+              - "${WORKER_IP}:8080"
   - job_name: postgres
     static_configs:
       - targets:
@@ -956,7 +963,7 @@ docker compose -f deploy/compose/docker-compose.multihost.yml port grafana 3000 
 
 **Logs rápidos**
 ```bash
-docker compose -f deploy/compose/docker-compose.multihost.yml logs -n 200 web core db mq worker grafana prometheus loki
+docker compose -f deploy/compose/docker-compose.multihost.yml logs -n 200 web core db worker grafana prometheus loki
 ```
 
 **Permisos Docker**

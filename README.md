@@ -85,7 +85,7 @@ docker compose exec anb_api python seed_data.py
 |----------|-----|--------------|
 | Swagger API Principal | http://localhost:8080/api/docs | - |
 | Swagger Autenticación | http://localhost:8080/auth/docs | - |
-| RabbitMQ Management | http://localhost:15672 | rabbit / rabbitpass |
+| (Migrado) RabbitMQ Management | Reemplazado por AWS SQS | N/A |
 | Grafana | http://localhost:8080/grafana/ | admin / admin |
 
 ### Documentación
@@ -206,7 +206,7 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 | Auth Service | http://`<alb-dns>`/auth/docs | - |
 | Grafana | http://`<alb-dns>`/grafana/ | admin / admin |
 | Prometheus | http://`<alb-dns>`/prometheus/ | - |
-| RabbitMQ | http://`<alb-dns>`/rabbitmq/ | rabbit / rabbitpass |
+| (Migrado) RabbitMQ | Reemplazado por AWS SQS | N/A |
 
 ### Documentación
 
@@ -238,7 +238,7 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 │   ├── userdata.sh.tftpl  # Scripts de configuración
 │   └── README.md          # Guía de despliegue
 ├── nginx/                 # Configuración de Nginx (Entrega 1)
-├── rabbitmq/              # Configuración de RabbitMQ
+├── rabbitmq/              # (Deprecado) Configuración legacy de RabbitMQ
 ├── observability/         # Stack de observabilidad
 │   ├── grafana/           # Configuración de Grafana
 │   ├── prometheus/        # Configuración de Prometheus
@@ -272,7 +272,7 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 
 ### Procesamiento Asíncrono
 - Celery (task queue)
-- RabbitMQ 3.10 (message broker)
+- AWS SQS (message broker)
 - FFmpeg (procesamiento de video)
 
 ### Infraestructura
@@ -291,6 +291,19 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 ---
 
 ## 🔧 Comandos Útiles
+## 🔧 Variables de Entorno Clave (SQS)
+
+Para la nueva integración con AWS SQS se requieren las siguientes variables de entorno en `.env`:
+
+```
+SQS_BROKER_URL=<URL o ARN de la cola principal>
+SQS_QUEUE_NAME=<Nombre de la cola>
+AWS_REGION=<Región AWS, ej. us-east-1>
+AWS_ACCESS_KEY_ID=<Clave de acceso>
+AWS_SECRET_ACCESS_KEY=<Secreto>
+```
+
+En la configuración de Celery se usa `CELERY_BROKER_URL=${SQS_BROKER_URL}`. RabbitMQ ya no es necesario.
 
 ### Entrega 1 (Docker Compose)
 
