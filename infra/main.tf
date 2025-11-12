@@ -807,15 +807,19 @@ resource "aws_instance" "auth" {
   }
 }
 
-resource "aws_instance" "worker" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_worker
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.worker.id]
-  depends_on                  = [aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+resource "aws_launch_template" "worker_lt" {
+  name_prefix   = "anb-worker-lt-"
+  image_id      = local.ami_id
+  instance_type = var.instance_type_worker
+  key_name      = var.key_name == "" ? null : var.key_name
+
+  vpc_security_group_ids = [aws_security_group.worker.id]
+
+  monitoring {
+    enabled = true
+  }
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "worker",
     repo_url              = var.repo_url,
     repo_branch           = var.repo_branch,
@@ -829,7 +833,7 @@ resource "aws_instance" "worker" {
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = "",
     rds_password          = var.rds_password,
-    s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key      = var.assets_inout_key,
     assets_wm_key         = var.assets_wm_key,
     sqs_broker_url        = "sqs://",
@@ -839,11 +843,79 @@ resource "aws_instance" "worker" {
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
     aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
     aws_session_token     = try(local.aws_env.aws_session_token, "")
-  })
-  tags = merge(local.tags_base, { Name = "anb-worker" })
-  root_block_device {
-    volume_size = 40
-    volume_type = "gp3"
+  }))
+
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_size = 40
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = merge(local.tags_base, { Name = "anb-worker", Role = "worker" })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags          = local.tags_base
+  }
+}
+
+resource "aws_autoscaling_group" "worker" {
+  name                      = "anb-worker-asg"
+  desired_capacity          = 1
+  min_size                  = 1
+  max_size                  = 3
+  vpc_zone_identifier       = [local.subnet_id]
+  health_check_type         = "EC2"
+  health_check_grace_period = 120
+  default_cooldown          = 120
+  default_instance_warmup   = 120
+
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupStandbyInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances"
+  ]
+
+  launch_template {
+    id      = aws_launch_template.worker_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "anb-worker"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
+}
+
+resource "aws_autoscaling_policy" "worker_cpu_target" {
+  name                   = "anb-worker-cpu-60"
+  autoscaling_group_name = aws_autoscaling_group.worker.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value     = 60
+    disable_scale_in = false
   }
 }
 
@@ -863,7 +935,7 @@ resource "aws_instance" "obs" {
     web_ip                = "",
     core_ip               = "",
     auth_ip               = aws_instance.auth.private_ip,
-    worker_ip             = aws_instance.worker.private_ip,
+    worker_ip             = "",
     obs_ip                = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
@@ -1432,7 +1504,7 @@ output "public_ips" {
   value = {
     core   = "ASG-managed"
     auth   = aws_instance.auth.public_ip
-    worker = aws_instance.worker.public_ip
+    worker = "ASG-managed"
     obs    = aws_instance.obs.public_ip
   }
 }
@@ -1441,7 +1513,7 @@ output "private_ips" {
   value = {
     core   = "ASG-managed"
     auth   = aws_instance.auth.private_ip
-    worker = aws_instance.worker.private_ip
+    worker = "ASG-managed"
     obs    = aws_instance.obs.private_ip
   }
 }
@@ -1495,6 +1567,33 @@ output "core_asg_public_ips" {
 output "core_asg_private_ips" {
   description = "Private IPs of CORE ASG instances"
   value       = data.aws_instances.core.private_ips
+}
+
+## Descubrimiento de instancias WORKER lanzadas por el ASG (para referencia)
+data "aws_instances" "worker" {
+  filter {
+    name   = "tag:Name"
+    values = ["anb-worker"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+}
+
+output "worker_asg_instance_ids" {
+  description = "Instance IDs in the WORKER ASG"
+  value       = data.aws_instances.worker.ids
+}
+
+output "worker_asg_public_ips" {
+  description = "Public IPs of WORKER ASG instances"
+  value       = data.aws_instances.worker.public_ips
+}
+
+output "worker_asg_private_ips" {
+  description = "Private IPs of WORKER ASG instances"
+  value       = data.aws_instances.worker.private_ips
 }
 
 output "rds_endpoints" {
