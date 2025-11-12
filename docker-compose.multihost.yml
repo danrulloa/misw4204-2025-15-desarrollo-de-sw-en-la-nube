@@ -50,7 +50,7 @@ services:
 
   promtail-core:
     profiles: ["core","obs-agent"]
-    image: grafana/promtail:2.9.4
+    image: grafana/promtail:3.0.0
     container_name: promtail-core
     command:
       - -config.file=/etc/promtail/config.yml
@@ -106,7 +106,7 @@ services:
 
   promtail-auth:
     profiles: ["auth","obs-agent"]
-    image: grafana/promtail:2.9.4
+    image: grafana/promtail:3.0.0
     container_name: promtail-auth
     command:
       - -config.file=/etc/promtail/config.yml
@@ -165,7 +165,7 @@ services:
     # Log shipper on WORKER host
   promtail-worker:
     profiles: ["worker","obs-agent"]
-    image: grafana/promtail:2.9.4
+    image: grafana/promtail:3.0.0
     container_name: promtail-worker
     command:
       - -config.file=/etc/promtail/config.yml
