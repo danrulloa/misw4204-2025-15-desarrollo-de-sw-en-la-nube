@@ -62,6 +62,9 @@ QUEUE_NAME = os.getenv('SQS_QUEUE_NAME', 'video_tasks')
 app.conf.task_default_queue = QUEUE_NAME
 app.conf.worker_prefetch_multiplier = 1
 app.conf.task_acks_late = True
+app.conf.worker_hijack_root_logger = False
+app.conf.worker_log_format = '%(message)s'
+app.conf.worker_task_log_format = '%(message)s'
 
 region = os.getenv('AWS_REGION', 'us-east-1')
 visibility_timeout = int(os.getenv('SQS_VISIBILITY_TIMEOUT', '60'))
