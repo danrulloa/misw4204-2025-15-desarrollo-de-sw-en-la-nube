@@ -6,3 +6,4 @@ boto3>=1.34,<2
 prometheus-client>=0.20.0
 # Async HTTP client for kombu SQS transport needs pycurl (avoids ImportError)
 pycurl>=7.45.2
+python-json-logger>=2.0.7

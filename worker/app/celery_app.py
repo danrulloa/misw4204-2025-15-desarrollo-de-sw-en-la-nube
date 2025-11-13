@@ -12,7 +12,29 @@ try:
 except Exception:
     _PROM_AVAILABLE = False
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(levelname)s] %(message)s')
+try:
+    from pythonjsonlogger import jsonlogger
+    _JSON_LOGGING = True
+except Exception:
+    _JSON_LOGGING = False
+
+
+def _configure_logging():
+    """Attach a JSON formatter if available, otherwise fallback to plain text."""
+    handler = logging.StreamHandler(sys.stdout)
+    if _JSON_LOGGING:
+        formatter = jsonlogger.JsonFormatter(
+            '%(asctime)s %(levelname)s %(name)s %(message)s'
+        )
+    else:
+        formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(logging.INFO)
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 # Tracing removido (Tempo rollback)
