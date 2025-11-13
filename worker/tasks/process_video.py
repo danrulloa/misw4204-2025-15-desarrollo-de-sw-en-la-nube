@@ -319,9 +319,9 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
     else:
         cmd.extend(['-map', '[v]'])
 
-    ff_threads = os.getenv('FFMPEG_THREADS', '0')        
-    ff_preset  = os.getenv('FFMPEG_PRESET', 'veryfast') 
-    ff_crf     = os.getenv('FFMPEG_CRF', '23') 
+    ff_threads = os.getenv('FFMPEG_THREADS', '2')        
+    ff_preset  = os.getenv('FFMPEG_PRESET', 'ultrafast') 
+    ff_crf     = os.getenv('FFMPEG_CRF', '25') 
 
     out_file = tmpdir / 'output.mp4'
     cmd.extend([
