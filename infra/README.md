@@ -517,6 +517,17 @@ terraform output alb_dns_name
 curl http://$(terraform output -raw alb_dns_name)/api/health
 # Debe responder: {"status": "healthy"}
 ```
+### 6.5 Verificar despliegue en múltiples AZ (alta disponibilidad)
+
+El Auto Scaling Group de **Core** está configurado para usar **múltiples zonas de disponibilidad (AZ)**.  
+Podemos corroborarlo consultando en qué AZ está cada instancia `anb-core`:
+
+```bash
+aws ec2 describe-instances \
+  --profile lab \
+  --filters "Name=tag:Name,Values=anb-core" "Name=instance-state-name,Values=running" \
+  --query 'Reservations[].Instances[].[InstanceId, Placement.AvailabilityZone]' \
+  --output table
 
 ---
 
