@@ -223,9 +223,10 @@ data "aws_ami" "ubuntu22" {
 }
 
 locals {
-  subnet_id = length(data.aws_subnets.az.ids) > 0 ? element(data.aws_subnets.az.ids, 0) : element(data.aws_subnets.default.ids, 0)
-  ami_id    = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu22.id
-  tags_base = { Project = "ANB", Environment = "lab" }
+  subnet_ids = slice(data.aws_subnets.default.ids, 0, min(2, length(data.aws_subnets.default.ids)))
+  subnet_id  = element(data.aws_subnets.default.ids, 0)
+  ami_id     = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu22.id
+  tags_base  = { Project = "ANB", Environment = "lab" }
 }
 
 # ========== Security Groups ==========
@@ -710,10 +711,10 @@ resource "aws_launch_template" "core_lt" {
 
 resource "aws_autoscaling_group" "core" {
   name                      = "anb-core-asg"
-  desired_capacity          = 1
-  min_size                  = 1
-  max_size                  = 3
-  vpc_zone_identifier       = [local.subnet_id]
+  desired_capacity          = 2
+  min_size                  = 2
+  max_size                  = 4
+  vpc_zone_identifier = local.subnet_ids
   health_check_type         = "ELB"
   health_check_grace_period = 120
   # Reducir tiempo entre decisiones del ASG y warmup para TargetTracking
@@ -761,7 +762,7 @@ resource "aws_autoscaling_policy" "core_cpu_target" {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
-    target_value     = 60
+    target_value     = 50
     disable_scale_in = false
   }
 }
