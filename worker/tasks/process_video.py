@@ -6,6 +6,7 @@ import shutil
 import logging
 import time
 from pathlib import Path
+from functools import lru_cache
 import psycopg
 import boto3
 from botocore.exceptions import ClientError
@@ -71,8 +72,9 @@ def _parse_s3_path(s3_path: str) -> tuple[str, str]:
     parts = s3_path.replace('s3://', '').split('/', 1)
     return parts[0], parts[1] if len(parts) > 1 else ''
 
+@lru_cache(maxsize=1)
 def _make_s3_transfer_config():
-    """Configura multipart y paralelismo para transferencias S3."""
+    """Configura multipart y paralelismo para transferencias S3 (cacheado por proceso)."""
     max_conc = int(os.getenv('S3_MAX_CONCURRENCY', '10')) 
     part_mb  = int(os.getenv('S3_MULTIPART_CHUNK_MB', '16')) 
     thr_mb   = int(os.getenv('S3_MULTIPART_THRESHOLD_MB', '64'))
@@ -83,6 +85,7 @@ def _make_s3_transfer_config():
         use_threads=True,
     )
 
+@lru_cache(maxsize=1)
 def _make_s3_client():
     """Crea un cliente S3 alineado con el adapter del core, usando credenciales explícitas.
 
