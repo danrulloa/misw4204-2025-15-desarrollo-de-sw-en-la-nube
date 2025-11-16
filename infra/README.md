@@ -1,103 +1,24 @@
 # README — Despliegue ANB en AWS Academy (Lab)
 
-## 0) Contexto y arquitectura
+## Arquitectura
 
-Este lab levanta **6 instancias EC2** (o 7 si se incluye la instancia DB legacy) con Ubuntu, más **2 instancias RDS** para bases de datos PostgreSQL y un **bucket S3** para almacenamiento de videos. La instalación puede ser:
+El despliegue en AWS Academy incluye:
 
-- **Automática** (recomendada): vía `user-data` (cloud-init) se instala Docker/Compose, se clona el repo y se levanta el stack multihost.
-- **Manual**: copias el paquete y ejecutas `docker compose` por perfiles.
+**Instancias EC2:**
+- **Core API**: Auto Scaling Group (2-4 instancias t3.small) ejecutando la API REST
+- **Auth Service**: 1 instancia t3.small para autenticación
+- **Workers**: Auto Scaling Group (1-3 instancias t3.large) para procesamiento de video
+- **Observabilidad**: 1 instancia t3.small (Prometheus, Grafana, Loki)
 
-El despliegue multihost usa `docker-compose.multihost.yml` con **profiles** por rol.
+**Servicios AWS gestionados:**
+- **RDS PostgreSQL**: 2 instancias (Core y Auth)
+- **S3**: Almacenamiento de videos
+- **SQS**: Cola de mensajes para workers (`video_tasks` + DLQ)
+- **ALB**: Application Load Balancer (punto de entrada único)
 
-**Topología actualizada:**
-
-### Instancias EC2 (5-6 VMs)
-- **CORE**: API principal (`anb_api`) + cAdvisor + promtail  
-- **AUTH**: Servicio de autenticación (`anb-auth-service`) + cAdvisor + promtail  
-- **DB** (legacy, opcional): PostgreSQL local - **Ya no se usa si RDS está configurado**
-- **WORKER**: Celery worker + cAdvisor + promtail  
-- **OBS**: Prometheus + Grafana + Loki
-
-### Servicios AWS gestionados
-- **RDS PostgreSQL**: 2 instancias gestionadas (`anb-core-rds` y `anb-auth-rds`)
-  - Reemplazan las bases de datos locales de la instancia DB
-  - Configuradas con security group dedicado
-  - Storage encriptado, backups automáticos (7 días)
-- **S3 Bucket**: Almacenamiento de videos (`anb-basketball-bucket-*`)
-  - Carpeta `uploads/` para videos originales
-  - Carpeta `processed/` para videos procesados
-   - Destrucción: configurado con `force_destroy = true` para eliminar el bucket aunque tenga objetos y versiones
-- **SQS (Celery broker)**: Colas gestionadas para tareas Celery
-   - Cola principal: `video_tasks`
-   - Dead-letter queue (DLQ): `video_dlq` (redrive policy maxReceiveCount=5)
-   - Usar con Celery transport `sqs://` y variable `SQS_QUEUE_NAME`
-- **Application Load Balancer (ALB)**: Balanceador de carga público
-   - Recibe tráfico HTTP en puerto 80
-   - Distribuye carga a instancias Core y Auth
-   - Routing a servicios de observabilidad (Grafana, Prometheus, Loki)
-
-**Security Groups (7):**
-- `alb` - Application Load Balancer (HTTP 80 público)
-- `core` - Instancia Core (solo API)
-- `auth` - Instancia Auth (puerto 8001)
-- `db` - Instancia DB legacy (solo si se mantiene)
-- `worker` - Instancia Worker
-- `obs` - Instancia Observabilidad
-- `rds` - RDS PostgreSQL (Core, Auth y Worker acceden en 5432)
-
----
-
-## Cambios principales en `main.tf`
-
-### Recursos agregados
-
-1. **RDS PostgreSQL** (2 instancias):
-   - `aws_db_instance.core` - Base de datos para el API Core
-   - `aws_db_instance.auth` - Base de datos para el servicio de autenticación
-   - `aws_db_subnet_group.anb_rds` - Subnet group para RDS (requiere al menos 2 AZs)
-   - `aws_security_group.rds` - Security group que permite tráfico desde instancias Core, Auth y Worker en puerto 5432
-
-2. **S3 Bucket**:
-   - `aws_s3_bucket.anb_videos` - Bucket con nombre único (`anb-basketball-bucket-*`)
-   - Configurado con versioning, encriptación (AES256) y bloqueo de acceso público
-
-3. **Application Load Balancer (ALB)**:
-   - `aws_lb.public` - Load balancer público HTTP (puerto 80)
-   - `aws_lb_target_group.tg_api` - Target group para instancias Core (API puerto 8000)
-   - `aws_lb_target_group.tg_auth` - Target group para instancias Auth (Auth puerto 8001)
-   - `aws_lb_target_group.tg_grafana`, `tg_prom`, `tg_loki` - Target groups para observabilidad
-   - (RabbitMQ eliminado — no se crea `tg_rmq`)
-   - Listeners y reglas de routing para distribuir tráfico según paths (`/api/*`, `/auth/*`, `/grafana/*`, etc.)
-
-### Variables agregadas
-
-- `rds_password` (sensitive) - Contraseña para las bases de datos RDS
-- `rds_instance_class` - Tipo de instancia RDS (default: `db.t3.micro`)
-- `repo_branch` - Rama del repositorio a clonar (default: `develop`)
-
-#### Variables para assets del Worker (obligatorias con default)
-- `assets_inout_path` (string) Ruta local del archivo de intro/outro para subir a S3 durante `terraform apply`. Por defecto apunta a `../worker/assets/inout.mp4`.
-- `assets_wm_path` (string) Ruta local del archivo de watermark para subir a S3 durante `terraform apply`. Por defecto apunta a `../worker/assets/watermark.png`.
-- `assets_inout_key` (string, default: `assets/inout.mp4`) Clave destino en S3 para el asset de intro/outro.
-- `assets_wm_key` (string, default: `assets/watermark.png`) Clave destino en S3 para el asset de watermark.
-
-### Cambios en `userdata.sh.tftpl`
-
-El script de user-data ahora:
-- Detecta si hay endpoints RDS configurados y los usa en lugar de la instancia DB local
-<!-- STORAGE_BACKEND eliminado: siempre S3 -->
-- Incluye configuración de S3 (bucket, region, prefixes)
-- Pasa el DNS del ALB para configuración de Loki
-- Hace checkout de la rama especificada en `repo_branch`
-
-### Outputs agregados
-
-- `alb_dns_name` - DNS del Application Load Balancer
-- `rds_endpoints` - Endpoints de RDS (Core y Auth)
-- `rds_addresses` - Direcciones IP/hostnames de RDS
-- `s3_bucket_name` - Nombre del bucket S3 creado
-- `sqs_queue_url` - URL de la cola SQS principal (`video_tasks`)
-- `sqs_dlq_url` - URL de la DLQ (`video_dlq`)
+**Despliegue:**
+- Automático vía `user-data` (cloud-init) que instala Docker, clona el repo y levanta servicios
+- Usa `docker-compose.multihost.yml` con perfiles por rol
 
 ---
 
@@ -322,8 +243,8 @@ Crea el archivo `infra/terraform.tfvars` con el siguiente contenido completo:
 # ========================================
 # Archivo: infra/terraform.tfvars
 # ========================================
-# ⚠️ ESTE ARCHIVO NO SE SUBE AL REPOSITORIO
-# ⚠️ Contiene contraseñas sensibles
+# ESTE ARCHIVO NO SE SUBE AL REPOSITORIO
+# Contiene contraseñas sensibles
 
 # Región de AWS
 region = "us-east-1"
@@ -333,14 +254,14 @@ key_name = "vockey"
 
 # IP pública del administrador (obtener con: curl -s https://checkip.amazonaws.com)
 # Formato: IP/32 (ej: 186.81.58.137/32)
-admin_cidr = "TU_IP_PUBLICA/32"  # ⚠️ ACTUALIZAR con tu IP pública
+admin_cidr = "TU_IP_PUBLICA/32"  # ACTUALIZAR con tu IP pública
 
 # ========================================
 # Configuración RDS
 # ========================================
 # OBLIGATORIO: Contraseña segura para bases de datos PostgreSQL
 # Requisitos: Mínimo 8 caracteres, incluir mayúsculas, minúsculas, números y símbolos
-rds_password = "TuPasswordSeguro123!"  # ⚠️ CAMBIAR por una contraseña segura
+rds_password = "TuPasswordSeguro123!"  # CAMBIAR por una contraseña segura
 
 # Tipo de instancia RDS (opcional, default: db.t3.micro)
 rds_instance_class = "db.t3.micro"
@@ -873,28 +794,222 @@ Pero para evitar costos de RDS, es mejor destruir todo con `terraform destroy`.
 
 ---
 
-## 11) Notas y buenas prácticas
+## 11) Configurar Instancia K6 para Pruebas de Carga
 
-### Seguridad
-- Mantén `admin_cidr` con tu IP `/32` (no expongas UIs a Internet)
-- **Nunca** subas `terraform.tfvars` al repositorio (contiene contraseñas)
-- Rota la contraseña de RDS periódicamente si es necesario
-- Las credenciales de sesión temporal expiran; obtén nuevas desde AWS Academy Lab
+### 11.1 Crear Instancia EC2 para K6
 
-### Costos
-- **RDS genera costos continuos**: Elimínalo cuando no lo necesites (`terraform destroy`)
-- Detén las instancias EC2 cuando no las uses: `aws ec2 stop-instances --instance-ids <id>`
-- Revisa tu presupuesto en AWS Academy Lab
+```bash
+# Crear instancia t3.small en AWS Console o CLI
+aws ec2 run-instances \
+  --image-id ami-0c02fb55956c7d316 \
+  --instance-type t3.small \
+  --key-name vockey \
+  --security-group-ids sg-xxxxx \
+  --subnet-id subnet-xxxxx \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=k6-load-tester}]'
+```
 
-### Permisos
-- Si tu rol en el lab **no** permite `ec2:RunInstances` o `rds:CreateDBInstance`, consulta al instructor
-- Verifica que el **LabRole** tenga permisos S3 (necesario para que Worker suba videos)
-- Para verificar permisos: AWS Console → IAM → Roles → LabRole → Permissions
+**Nota**: Asegúrate de que el security group permita tráfico saliente (HTTPS/HTTP) para acceder al ALB.
 
-### Compatibilidad
-- Asegura que **todas las instancias** puedan resolver/alcanzar las IPs privadas configuradas
-- Verifica que las instancias EC2 puedan conectarse a RDS (security group `rds` debe permitir tráfico desde `core` y `worker`)
-- Si usas S3, verifica que las instancias Core y Worker tengan permisos IAM (LabRole)
+### 11.2 Instalar K6 en la Instancia
+
+```bash
+# SSH a la instancia
+ssh -i ~/.ssh/vockey.pem ubuntu@<IP_PUBLICA_K6>
+
+# Instalar K6
+sudo apt-get update
+sudo apt-get install -y ca-certificates gnupg curl
+sudo gpg --no-default-keyring \
+  --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+  --keyserver hkp://keyserver.ubuntu.com:80 \
+  --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update
+sudo apt-get install -y k6
+
+# Verificar instalación
+k6 version
+```
+
+### 11.3 Preparar Scripts de K6 en la Instancia
+
+**Opción A: Clonar Repositorio Completo**
+
+```bash
+# En la instancia K6
+cd /home/ubuntu
+git clone https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube.git anb-cloud
+cd anb-cloud
+git checkout main  # o la rama que uses
+```
+
+**Opción B: Crear Directorio y Subir Scripts con SCP**
+
+```bash
+# Desde tu máquina local - definir variables
+K6_IP="<IP_PUBLICA_K6>"
+PEM_PATH="~/.ssh/vockey.pem"  # o la ruta a tu archivo .pem (ej: C:/Users/tu-usuario/.ssh/vockey.pem en Windows)
+
+# Crear directorio en la instancia K6
+ssh -i $PEM_PATH ubuntu@$K6_IP "mkdir -p ~/k6"
+
+# Subir scripts de K6 desde tu máquina local
+scp -i $PEM_PATH K6/1sanidad.js ubuntu@$K6_IP:~/k6/
+scp -i $PEM_PATH K6/2escalamiento.js ubuntu@$K6_IP:~/k6/
+scp -i $PEM_PATH K6/3sostenidaCorta.js ubuntu@$K6_IP:~/k6/
+scp -i $PEM_PATH K6/0unaPeticion.js ubuntu@$K6_IP:~/k6/
+
+# Verificar archivos subidos
+ssh -i $PEM_PATH ubuntu@$K6_IP "ls -lh ~/k6/"
+```
+
+**Nota**: Si usas Opción B, recuerda ajustar las rutas en los comandos siguientes (usar `~/k6/` en lugar de `~/anb-cloud/K6/`).
+
+### 11.4 Registrar Usuario y Obtener Token con Postman
+
+**Desde tu máquina local con Postman:**
+
+1. **Obtener DNS del ALB:**
+   ```bash
+   cd infra
+   terraform output -raw alb_dns_name
+   # Ejemplo: anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com
+   ```
+
+2. **Abrir Postman** y usar la colección `ANB_Basketball_API.postman_collection.json`
+
+3. **Registrar usuario** (si no existe):
+   - Request: `POST /auth/api/v1/signup`
+   - Body (JSON):
+     ```json
+     {
+       "username": "test_load",
+       "email": "test_load@example.com",
+       "password": "Test123!",
+       "first_name": "Test",
+       "last_name": "Load",
+       "city": "Bogotá"
+     }
+     ```
+
+4. **Hacer login**:
+   - Request: `POST /auth/api/v1/login`
+   - Body (form-data):
+     - `username`: `test_load@example.com`
+     - `password`: `Test123!`
+   - **Copiar el `access_token` de la respuesta** (será usado en los scripts K6)
+
+### 11.5 Subir Archivos de Video a la Instancia K6
+
+**Desde tu máquina local:**
+
+```bash
+# Variables
+K6_IP="<IP_PUBLICA_K6>"
+PEM_PATH="~/.ssh/vockey.pem"  # o la ruta a tu archivo .pem
+
+# Si usaste Opción A (repositorio clonado)
+scp -i $PEM_PATH K6/4MB.mp4 ubuntu@$K6_IP:~/anb-cloud/K6/
+scp -i $PEM_PATH K6/50MB.mp4 ubuntu@$K6_IP:~/anb-cloud/K6/
+scp -i $PEM_PATH K6/101MB.mp4 ubuntu@$K6_IP:~/anb-cloud/K6/
+
+# Si usaste Opción B (directorio k6)
+scp -i $PEM_PATH K6/4MB.mp4 ubuntu@$K6_IP:~/k6/
+scp -i $PEM_PATH K6/50MB.mp4 ubuntu@$K6_IP:~/k6/
+scp -i $PEM_PATH K6/101MB.mp4 ubuntu@$K6_IP:~/k6/
+```
+
+**Verificar archivos en la instancia:**
+
+```bash
+# Si usaste Opción A
+ssh -i $PEM_PATH ubuntu@$K6_IP
+cd ~/anb-cloud/K6
+ls -lh *.mp4
+
+# Si usaste Opción B
+ssh -i $PEM_PATH ubuntu@$K6_IP
+cd ~/k6
+ls -lh *.mp4
+```
+
+### 11.6 Actualizar Scripts de K6
+
+**En la instancia K6**, edita los scripts para actualizar las variables:
+
+```bash
+# Si usaste Opción A (repositorio clonado)
+cd ~/anb-cloud/K6
+
+# Si usaste Opción B (directorio k6)
+cd ~/k6
+
+# Editar script (ejemplo: 1sanidad.js)
+nano 1sanidad.js
+```
+
+**Variables a actualizar en cada script:**
+
+```javascript
+// Línea 10: Actualizar BASE_URL con el DNS del ALB
+const BASE_URL = __ENV.BASE_URL || 'http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com'
+
+// Línea 12: Actualizar FILE_PATH con el nombre del archivo
+const FILE_PATH = __ENV.FILE_PATH || '50MB.mp4'  // o '4MB.mp4', '101MB.mp4'
+
+// Línea 13: Actualizar TITLE con el nombre del video
+const TITLE = __ENV.TITLE || 'prueba50mb'
+
+// Línea 15: Actualizar ACCESS_TOKEN con el token obtenido de Postman
+const ACCESS_TOKEN = __ENV.ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+```
+
+**Actualizar los scripts:**
+- `1sanidad.js`
+- `2escalamiento.js`
+- `3sostenidaCorta.js`
+- `0unaPeticion.js` (opcional, para validación rápida)
+
+### 11.7 Ejecutar Pruebas de Carga
+
+**En la instancia K6:**
+
+```bash
+# Si usaste Opción A (repositorio clonado)
+cd ~/anb-cloud/K6
+
+# Si usaste Opción B (directorio k6)
+cd ~/k6
+
+# Prueba de sanidad (1 minuto)
+k6 run 1sanidad.js
+
+# Prueba de escalamiento (8 minutos)
+k6 run 2escalamiento.js
+
+# Prueba sostenida (5 minutos)
+k6 run 3sostenidaCorta.js
+```
+
+**Alternativa: Usar variables de entorno (sin editar scripts):**
+
+```bash
+export BASE_URL="http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com"
+export ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+export FILE_PATH="50MB.mp4"
+export TITLE="prueba50mb"
+
+k6 run -e BASE_URL=$BASE_URL -e ACCESS_TOKEN=$ACCESS_TOKEN -e FILE_PATH=$FILE_PATH -e TITLE=$TITLE 1sanidad.js
+```
+
+### 11.8 Verificar Resultados
+
+Los resultados se muestran en la consola al finalizar cada prueba. Métricas clave:
+- **RPS**: Requests por segundo
+- **Latencia**: p50, p90, p95, p99
+- **Tasa de errores**: Porcentaje de requests fallidos
+- **Success rate**: Tasa de éxito
 
 ---
 

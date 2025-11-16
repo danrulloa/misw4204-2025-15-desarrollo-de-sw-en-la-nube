@@ -9,42 +9,44 @@
 
 ---
 
-## 📋 Descripción del Proyecto
+## Descripción del Proyecto
 
 ANB Rising Stars Showcase es un sistema completo para la gestión de videos y votaciones de jugadores de baloncesto de la Asociación Nacional de Baloncesto (ANB). El sistema permite a jugadores aficionados subir videos de sus habilidades, procesarlos automáticamente y permitir que el público vote por sus favoritos.
 
 ### Características Principales
 
-- ✅ API RESTful con 9 endpoints documentados en OpenAPI/Swagger
-- ✅ Autenticación y autorización con JWT y refresh tokens
-- ✅ Procesamiento asíncrono de videos (redimensionamiento, conversión, marca de agua)
-- ✅ Sistema de votación pública con rankings dinámicos
-- ✅ Observabilidad completa con métricas, logs y traces distribuidos
-- ✅ Pruebas unitarias con cobertura superior al 80%
-- ✅ Colección Postman con tests automatizados
+- API RESTful con 9 endpoints documentados en OpenAPI/Swagger
+- Autenticación y autorización con JWT y refresh tokens
+- Procesamiento asíncrono de videos (redimensionamiento, conversión, marca de agua)
+- Sistema de votación pública con rankings dinámicos
+- Observabilidad completa con métricas, logs y traces distribuidos
+- Pruebas unitarias con cobertura superior al 80%
+- Colección Postman con tests automatizados
 
 ---
 
-## 🎯 Versiones del Proyecto
+## Versiones del Proyecto
 
-Este proyecto ha evolucionado a lo largo de **3 entregas académicas**, cada una representando una versión diferente del sistema con mejoras en escalabilidad, infraestructura y servicios gestionados.
+Este proyecto ha evolucionado a lo largo de **4 entregas académicas**, cada una representando una versión diferente del sistema con mejoras en escalabilidad, infraestructura y servicios gestionados.
 
 ### Resumen Comparativo
 
-| Aspecto | **Entrega 1** | **Entrega 2** | **Entrega 3** |
-|---------|---------------|---------------|---------------|
-| **Ambiente** | Docker Compose Local | AWS EC2 (6 instancias) | AWS con servicios gestionados |
-| **Base de Datos** | PostgreSQL en contenedores | PostgreSQL en contenedores | Amazon RDS PostgreSQL |
-| **Almacenamiento** | Volúmenes Docker locales | Volúmenes EBS | Amazon S3 |
-| **Balanceador** | Nginx (contenedor) | Nginx (instancia EC2) | Application Load Balancer (ALB) |
-| **Escalabilidad** | Manual (recrear contenedores) | Manual (recrear instancias) | Automática (Auto Scaling Group) |
-| **Alta Disponibilidad** | No | No | Sí (ALB + Multi-AZ) |
-| **Infraestructura** | Docker Compose | Terraform + EC2 | Terraform + AWS (RDS, S3, ALB, ASG) |
-| **Observabilidad** | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki + CloudWatch |
+| Aspecto | **Entrega 1** | **Entrega 2** | **Entrega 3** | **Entrega 4** |
+|---------|---------------|---------------|---------------|---------------|
+| **Ambiente** | Docker Compose Local | AWS EC2 (6 instancias) | AWS con servicios gestionados | AWS con servicios gestionados |
+| **Base de Datos** | PostgreSQL en contenedores | PostgreSQL en contenedores | Amazon RDS PostgreSQL | Amazon RDS PostgreSQL |
+| **Almacenamiento** | Volúmenes Docker locales | Volúmenes EBS | Amazon S3 | Amazon S3 |
+| **Balanceador** | Nginx (contenedor) | Nginx (instancia EC2) | Application Load Balancer (ALB) | Application Load Balancer (ALB) Multi-AZ |
+| **Escalabilidad** | Manual (recrear contenedores) | Manual (recrear instancias) | Automática (Auto Scaling Group - Core API) | Automática (ASG Core API + ASG Workers) |
+| **Alta Disponibilidad** | No | No | Sí (ALB) | Sí (ALB + Multi-AZ Core API) |
+| **Message Broker** | RabbitMQ (contenedor) | RabbitMQ (instancia EC2) | RabbitMQ (instancia EC2) | Amazon SQS (gestionado) |
+| **Workers** | Celery (contenedor) | Celery (instancia EC2 fija) | Celery (instancia EC2 fija) | Celery (Auto Scaling Group) |
+| **Infraestructura** | Docker Compose | Terraform + EC2 | Terraform + AWS (RDS, S3, ALB, ASG) | Terraform + AWS (RDS, S3, ALB, ASG, SQS) |
+| **Observabilidad** | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki + CloudWatch | Prometheus, Grafana, Loki + CloudWatch |
 
 ---
 
-## 📦 Entrega 1: API REST y Procesamiento Asíncrono
+## Entrega 1: API REST y Procesamiento Asíncrono
 
 **Objetivo:** Implementación de una API REST escalable con orquestación de tareas asíncronas en ambiente local con Docker Compose.
 
@@ -95,7 +97,7 @@ docker compose exec anb_api python seed_data.py
 
 ---
 
-## ☁️ Entrega 2: Despliegue en AWS
+## Entrega 2: Despliegue en AWS
 
 **Objetivo:** Migración de la aplicación de Docker Compose local a AWS, desplegando en múltiples instancias EC2.
 
@@ -148,7 +150,7 @@ terraform output
 
 ---
 
-## 🚀 Entrega 3: Escalabilidad en la Capa Web
+## Entrega 3: Escalabilidad en la Capa Web
 
 **Objetivo:** Implementación de escalabilidad automática y servicios gestionados de AWS para alta disponibilidad y escalabilidad.
 
@@ -164,11 +166,11 @@ terraform output
 
 ### Cambios Principales vs Entrega 2
 
-- ✅ Eliminada instancia Web Nginx → Reemplazada por ALB
-- ✅ Eliminada instancia DB EC2 → Reemplazada por RDS
-- ✅ Almacenamiento EBS → Migrado a S3
-- ✅ Instancias fijas Core API → Auto Scaling Group
-- ✅ Observabilidad mejorada con CloudWatch
+- Eliminada instancia Web Nginx → Reemplazada por ALB
+- Eliminada instancia DB EC2 → Reemplazada por RDS
+- Almacenamiento EBS → Migrado a S3
+- Instancias fijas Core API → Auto Scaling Group
+- Observabilidad mejorada con CloudWatch
 
 ### Inicio Rápido
 
@@ -216,7 +218,115 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 
 ---
 
-## 📚 Estructura del Proyecto
+## Entrega 4: Escalabilidad en la Capa Batch/Worker
+
+**Objetivo:** Implementación de escalabilidad automática en la capa de procesamiento batch (workers) utilizando servicios gestionados de AWS, completando la transformación del sistema hacia una arquitectura cloud-native totalmente escalable y de alta disponibilidad.
+
+### Características
+
+- **Auto Scaling Group - Workers**: Escalado automático del procesamiento batch (1-3 instancias t3.large)
+- **Amazon SQS**: Sistema de mensajería gestionado que reemplaza RabbitMQ
+- **Dead Letter Queue (DLQ)**: Manejo automático de mensajes fallidos
+- **Multi-AZ Core API**: Despliegue en múltiples zonas de disponibilidad (us-east-1a y us-east-1b)
+- **Alta Disponibilidad**: Sistema resiliente ante fallos de zona completa
+- Escalabilidad automática tanto en capa web como en capa de procesamiento
+
+### Cambios Principales vs Entrega 3
+
+- Eliminada instancia Worker EC2 fija → Reemplazada por Auto Scaling Group
+- Eliminado RabbitMQ EC2 → Reemplazado por Amazon SQS
+- Core API desplegado en múltiples zonas de disponibilidad (us-east-1a y us-east-1b)
+- ASG Core API expandido: 2-4 instancias (antes 1-3)
+- Alta disponibilidad completa mediante despliegue multi-AZ
+
+### Inicio Rápido
+
+```bash
+# Prerrequisitos
+- Terraform instalado
+- AWS CLI configurado
+- Credenciales de AWS Academy con permisos para RDS, S3, ALB, ASG, SQS
+- Assets del worker (watermark.png, inout.mp4) en worker/assets/
+
+# Usar release v4.0.0 (desde main)
+git checkout v4.0.0
+# O usar main directamente
+git checkout main
+
+# Configurar variables
+cd infra
+cp terraform.tfvars.example terraform.tfvars
+# Editar terraform.tfvars:
+# - rds_password: Contraseña para RDS
+# - assets_inout_path: Ruta a worker/assets/inout.mp4
+# - assets_wm_path: Ruta a worker/assets/watermark.png
+
+# Desplegar infraestructura
+terraform init
+terraform plan
+terraform apply
+
+# Obtener DNS del ALB
+terraform output alb_dns_name
+```
+
+### Acceso a Servicios
+
+Una vez desplegado, accede a los servicios a través del DNS del ALB:
+
+| Servicio | URL | Credenciales |
+|----------|-----|--------------|
+| API Principal | http://`<alb-dns>`/api/docs | - |
+| Auth Service | http://`<alb-dns>`/auth/docs | - |
+| Grafana | http://`<alb-dns>`/grafana/ | admin / admin |
+| Prometheus | http://`<alb-dns>`/prometheus/ | - |
+| Amazon SQS | Console AWS / Terraform output | N/A |
+
+### Componentes Principales
+
+**Auto Scaling Group - Core API**
+- Capacidad: 2-4 instancias t3.small
+- Política de escalado: CPU promedio 50%
+- Zonas: us-east-1a y us-east-1b (multi-AZ)
+- Health check: ELB-based mediante `/api/health`
+
+**Auto Scaling Group - Workers** (Nuevo)
+- Capacidad: 1-3 instancias t3.large
+- Política de escalado: CPU promedio 60%
+- Optimizado para procesamiento intensivo de video con FFmpeg
+- Health check: EC2-based
+
+**Amazon SQS** (Nuevo)
+- Cola principal: `video_tasks`
+- Dead Letter Queue (DLQ): Manejo de mensajes fallidos
+- Long polling: 20 segundos
+- Visibilidad timeout: 60 segundos
+- Retención: 14 días
+
+### Rendimiento
+
+**Core API** (basado en pruebas de carga):
+- 4MB: 35 requests/segundo, p95 latencia de 305ms, 100% success rate
+- 50MB: 2.7 requests/segundo, p95 latencia de 4.6s, 100% success rate
+- 100MB: 1.46 requests/segundo, p95 latencia de 9s, 100% success rate
+
+**Workers** (throughput normalizado):
+- 4MB: 22 MB/minuto (5.5 videos/min, 1,320 MB/hora)
+- 50MB: 142.5 MB/minuto (2.85 videos/min, 8,550 MB/hora)
+- 100MB: ~140 MB/minuto estimado (~1.4 videos/min, ~8,400 MB/hora)
+
+**Confiabilidad**: 99.90-100% success rate bajo carga sostenida
+
+### Documentación
+
+- [Documentación Completa - Entrega 4](docs/entrega4/entrega4.md)
+- [Pruebas de Carga - Entrega 4](capacity-planning/pruebas_de_carga_entrega4.md)
+- [Wiki del Proyecto - Entrega 4](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-4)
+- [Infraestructura Terraform](infra/README.md)
+
+---
+
+## Estructura del Proyecto
 
 ```
 .
@@ -248,10 +358,12 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 ├── docs/                  # Documentación del proyecto
 │   ├── Entrega_1/         # Documentación Entrega 1
 │   ├── Entrega_2/         # Documentación Entrega 2
-│   └── entrega3/          # Documentación Entrega 3
+│   ├── entrega3/          # Documentación Entrega 3
+│   └── entrega4/          # Documentación Entrega 4
 ├── capacity-planning/     # Plan y análisis de pruebas de carga
 │   ├── plan_de_pruebas.md
-│   └── pruebas_de_carga_entrega3.md
+│   ├── pruebas_de_carga_entrega3.md
+│   └── pruebas_de_carga_entrega4.md
 ├── compose.yaml           # Docker Compose (Entrega 1)
 ├── docker-compose.multihost.yml  # Docker Compose multihost (Entrega 2-3)
 └── README.md              # Este archivo
@@ -259,7 +371,7 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 
 ---
 
-## 🛠️ Stack Tecnológico
+## Stack Tecnológico
 
 ### Backend y APIs
 - Python 3.12
@@ -272,26 +384,27 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 
 ### Procesamiento Asíncrono
 - Celery (task queue)
-- AWS SQS (message broker)
+- Amazon SQS (message broker gestionado - Entrega 4)
+- RabbitMQ (deprecado en Entrega 4, reemplazado por SQS)
 - FFmpeg (procesamiento de video)
 
 ### Infraestructura
 - Docker y Docker Compose (Entrega 1)
-- Terraform (Entrega 2-3)
-- AWS EC2, RDS, S3, ALB, ASG (Entrega 2-3)
-- Nginx 1.25 (reverse proxy - Entrega 1-2)
+- Terraform (Entrega 2-4)
+- AWS EC2, RDS, S3, ALB, ASG, SQS (Entrega 2-4)
+- Nginx 1.25 (reverse proxy - Entrega 1-2, deprecado en Entrega 3)
 
 ### Observabilidad
 - Grafana (visualización)
 - Prometheus (métricas)
 - Loki (logs)
-- CloudWatch (métricas AWS - Entrega 3)
+- CloudWatch (métricas AWS - Entrega 3-4)
 
 
 ---
 
-## 🔧 Comandos Útiles
-## 🔧 Variables de Entorno Clave (SQS)
+## Comandos Útiles
+## Variables de Entorno Clave (SQS)
 
 Para la nueva integración con AWS SQS se requieren las siguientes variables de entorno en `.env`:
 
@@ -322,7 +435,7 @@ docker compose down
 docker compose up -d --build --force-recreate
 ```
 
-### Entrega 2-3 (Terraform)
+### Entrega 2-4 (Terraform)
 
 ```bash
 # Inicializar Terraform
@@ -335,17 +448,22 @@ terraform plan
 # Aplicar cambios
 terraform apply
 
-# Ver outputs
+# Ver outputs (incluye ALB DNS, SQS queue URLs)
 terraform output
+
+# Verificar estado de recursos
+terraform show
 
 # Destruir infraestructura
 terraform destroy
 ```
 
+**Nota**: Para la Entrega 4, asegúrate de tener permisos para SQS y que los assets del worker estén disponibles en `worker/assets/`.
+
 
 ---
 
-## 📝 Notas Importantes
+## Notas Importantes
 
 ### AWS Academy
 
@@ -360,11 +478,12 @@ Este proyecto utiliza **AWS Academy** para el despliegue en la nube. Las limitac
 
 - **v1.0.0**: Entrega 1 - API REST y Procesamiento Asíncrono
 - **v2.0.0**: Entrega 2 - Despliegue en AWS
-- **v3.0.0**: Entrega 3 - Escalabilidad en la Capa Web (rama `develop`)
+- **v3.0.0**: Entrega 3 - Escalabilidad en la Capa Web
+- **v4.0.0**: Entrega 4 - Escalabilidad en la Capa Batch/Worker
 
 ---
 
-## 👥 Equipo
+## Equipo
 
 | Nombre | Correo Institucional |
 |--------|---------------------|
@@ -380,4 +499,4 @@ Este es un proyecto académico desarrollado para el curso MISW4204 - Desarrollo 
 
 ---
 
-**Última actualización:** Noviembre 2025
+**Última actualización:** 16 de Noviembre 2025
