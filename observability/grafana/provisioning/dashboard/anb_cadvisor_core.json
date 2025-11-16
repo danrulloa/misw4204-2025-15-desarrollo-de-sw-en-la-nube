@@ -38,8 +38,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"$container\"}[1m])) * 100",
-          "legendFormat": "{{name}}",
+          "expr": "sum by (job, instance) (rate(container_cpu_usage_seconds_total{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[1m])) * 100",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
@@ -66,8 +66,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"$container\"}) / sum by (name) (container_spec_memory_limit_bytes{name=~\"$container\"} > 0) * 100",
-          "legendFormat": "{{name}}",
+          "expr": "sum by (job) (container_memory_working_set_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}) / sum by (job) (container_spec_memory_limit_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"} > 0) * 100",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
@@ -89,8 +89,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"$container\"})",
-          "legendFormat": "{{name}}",
+          "expr": "sum(container_memory_working_set_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"})",
+          "legendFormat": "Total Memory",
           "refId": "A"
         }
       ],
@@ -110,8 +110,8 @@
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
       "targets": [
         {
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"$container\"}[1m]) * 100",
-          "legendFormat": "{{name}}",
+          "expr": "rate(container_cpu_usage_seconds_total{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[1m]) * 100",
+          "legendFormat": "{{job}} - {{id}}",
           "refId": "A"
         }
       ]
@@ -124,8 +124,8 @@
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
       "targets": [
         {
-          "expr": "container_memory_working_set_bytes{name=~\"$container\"}",
-          "legendFormat": "{{name}}",
+          "expr": "container_memory_working_set_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}",
+          "legendFormat": "{{job}} - {{id}}",
           "refId": "A"
         }
       ]
@@ -138,13 +138,13 @@
       "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
       "targets": [
         {
-          "expr": "sum by (name) (rate(container_network_receive_bytes_total{name=~\"$container\"}[1m]))",
-          "legendFormat": "RX {{name}}",
+          "expr": "sum by (job, id) (rate(container_network_receive_bytes_total{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[1m]))",
+          "legendFormat": "RX {{job}}",
           "refId": "A"
         },
         {
-          "expr": "sum by (name) (rate(container_network_transmit_bytes_total{name=~\"$container\"}[1m]))",
-          "legendFormat": "TX {{name}}",
+          "expr": "sum by (job, id) (rate(container_network_transmit_bytes_total{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[1m]))",
+          "legendFormat": "TX {{job}}",
           "refId": "B"
         }
       ]
@@ -157,8 +157,8 @@
       "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
       "targets": [
         {
-          "expr": "100 * (container_fs_usage_bytes{name=~\"$container\"} / clamp_min(container_fs_limit_bytes{name=~\"$container\"}, 1))",
-          "legendFormat": "{{name}}",
+          "expr": "100 * (container_fs_usage_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"} / clamp_min(container_fs_limit_bytes{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}, 1))",
+          "legendFormat": "{{job}} - {{id}}",
           "refId": "A"
         }
       ]
@@ -171,8 +171,8 @@
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
       "targets": [
         {
-          "expr": "sum by (name) (increase(container_oom_events_total{name=~\"$container\"}[5m]))",
-          "legendFormat": "{{name}}",
+          "expr": "sum by (job, id) (increase(container_oom_events_total{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[5m]))",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
@@ -192,8 +192,8 @@
       "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
       "targets": [
         {
-          "expr": "sum by (name) (changes(container_start_time_seconds{name=~\"$container\"}[10m]))",
-          "legendFormat": "{{name}}",
+          "expr": "sum by (job, id) (changes(container_start_time_seconds{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}[10m]))",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
@@ -213,8 +213,8 @@
       "fieldConfig": { "defaults": { "unit": "m" }, "overrides": [] },
       "targets": [
         {
-          "expr": "(time() - container_start_time_seconds{name=~\"$container\"}) / 60",
-          "legendFormat": "{{name}}",
+          "expr": "(time() - container_start_time_seconds{job=~\"$cadvisor_job\", id=~\"/system.slice/docker-.*scope\"}) / 60",
+          "legendFormat": "{{job}} - {{id}}",
           "refId": "A"
         }
       ],
@@ -234,11 +234,11 @@
   "templating": {
     "list": [
       {
-        "name": "container",
+        "name": "cadvisor_job",
         "type": "query",
         "hide": 0,
         "datasource": { "type": "prometheus", "uid": "prometheus-main" },
-        "query": "label_values(container_cpu_usage_seconds_total, name)",
+        "query": "label_values(container_cpu_usage_seconds_total{job=~\".*cadvisor\"}, job)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
