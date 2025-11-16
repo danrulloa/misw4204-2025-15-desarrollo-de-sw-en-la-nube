@@ -4,7 +4,9 @@ import tempfile
 import os
 import shutil
 import logging
+import time
 from pathlib import Path
+from functools import lru_cache
 import psycopg
 import boto3
 from botocore.exceptions import ClientError
@@ -15,6 +17,24 @@ logger = logging.getLogger(__name__)
 
 # Constant for mapping uploaded API path to worker storage
 MNT_UPLOADS_PREFIX = '/mnt/uploads'
+
+
+def _log_visibility(action, *, correlation_id=None, video_id=None, **extra):
+    """Helper to emit structured logs for visibility."""
+    payload = {}
+    if correlation_id is not None:
+        payload['correlation_id'] = correlation_id
+    if video_id is not None:
+        payload['video_id'] = str(video_id)
+    for key, value in extra.items():
+        if value is not None:
+            payload[key] = value
+    logger.info('visibilidad: %s', action, extra=payload or None)
+
+
+def _elapsed_ms(start_time: float) -> float:
+    """Return elapsed milliseconds since `start_time`."""
+    return round((time.monotonic() - start_time) * 1000, 2)
 
 
 def _extract_task_self_and_args(bound_self, args):
@@ -52,8 +72,9 @@ def _parse_s3_path(s3_path: str) -> tuple[str, str]:
     parts = s3_path.replace('s3://', '').split('/', 1)
     return parts[0], parts[1] if len(parts) > 1 else ''
 
+@lru_cache(maxsize=1)
 def _make_s3_transfer_config():
-    """Configura multipart y paralelismo para transferencias S3."""
+    """Configura multipart y paralelismo para transferencias S3 (cacheado por proceso)."""
     max_conc = int(os.getenv('S3_MAX_CONCURRENCY', '10')) 
     part_mb  = int(os.getenv('S3_MULTIPART_CHUNK_MB', '16')) 
     thr_mb   = int(os.getenv('S3_MULTIPART_THRESHOLD_MB', '64'))
@@ -64,6 +85,7 @@ def _make_s3_transfer_config():
         use_threads=True,
     )
 
+@lru_cache(maxsize=1)
 def _make_s3_client():
     """Crea un cliente S3 alineado con el adapter del core, usando credenciales explícitas.
 
@@ -300,9 +322,9 @@ def _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overla
     else:
         cmd.extend(['-map', '[v]'])
 
-    ff_threads = os.getenv('FFMPEG_THREADS', '0')        
-    ff_preset  = os.getenv('FFMPEG_PRESET', 'veryfast') 
-    ff_crf     = os.getenv('FFMPEG_CRF', '23') 
+    ff_threads = os.getenv('FFMPEG_THREADS', '2')        
+    ff_preset  = os.getenv('FFMPEG_PRESET', 'ultrafast') 
+    ff_crf     = os.getenv('FFMPEG_CRF', '25') 
 
     out_file = tmpdir / 'output.mp4'
     cmd.extend([
@@ -434,6 +456,12 @@ def run(self, *args, **kwargs):
         args,
         kwargs,
     )
+    _log_visibility(
+        'task_start',
+        correlation_id=correlation_id,
+        video_id=video_id,
+        input_path=str(input_path),
+    )
     # Tracing removed (Tempo rollback)
 
     if not input_path:
@@ -447,7 +475,16 @@ def run(self, *args, **kwargs):
 
     # Keep original incoming path (from API message) for later mirroring
     original_input = input_path
+    resolve_start = time.monotonic()
     video_src = _resolve_worker_path(original_input)
+    _log_visibility(
+        'input_resolved',
+        correlation_id=correlation_id,
+        video_id=video_id,
+        original_path=str(original_input),
+        resolved_path=str(video_src),
+        duration_ms=_elapsed_ms(resolve_start),
+    )
 
     # Log which path we'll use inside the worker for debugging
     logger.info(
@@ -478,22 +515,53 @@ def run(self, *args, **kwargs):
         correlation_id,
         tmpdir,
     )
+    _log_visibility(
+        'tmpdir_ready',
+        correlation_id=correlation_id,
+        video_id=video_id,
+        tmpdir=str(tmpdir),
+    )
 
     try:
         # Process without tracing
             # Gather inputs and determine stream indices
+            gather_start = time.monotonic()
             inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels = _gather_inputs(
                 video_src, intro_path, outro_path, watermark_path
+            )
+            _log_visibility(
+                'inputs_prepared',
+                correlation_id=correlation_id,
+                video_id=video_id,
+                duration_ms=_elapsed_ms(gather_start),
+                intro_enabled=idx_intro is not None,
+                outro_enabled=idx_outro is not None,
+                watermark_enabled=idx_wm is not None,
             )
 
             # Build ffmpeg command and filter_complex
             cmd, out_file = _build_filter_and_cmd(inputs, idx_intro, idx_main, idx_outro, idx_wm, overlay_labels, tmpdir)
+            _log_visibility(
+                'ffmpeg_command_ready',
+                correlation_id=correlation_id,
+                video_id=video_id,
+                inputs=len(inputs),
+                tmp_output=str(out_file),
+            )
 
             # Run and capture output
+            ffmpeg_start = time.monotonic()
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if proc.returncode != 0:
                 logger.error('ffmpeg failed: %s', proc.stderr.decode('utf-8', errors='ignore'))
                 raise task_self.retry(exc=RuntimeError('ffmpeg failed'), countdown=30, max_retries=2)
+            _log_visibility(
+                'ffmpeg_completed',
+                correlation_id=correlation_id,
+                video_id=video_id,
+                duration_ms=_elapsed_ms(ffmpeg_start),
+                tmp_output=str(out_file),
+            )
 
             # At this point, out_file should exist
             if not out_file.exists():
@@ -519,8 +587,16 @@ def run(self, *args, **kwargs):
                 # Output es S3: enviar la ruta tal cual (string) a la función de upload
                 output_str = output_path
                 try:
+                    transfer_start = time.monotonic()
                     _upload_to_s3(out_file, output_str)
                     logger.info('Subido archivo procesado a S3: %s', output_str)
+                    _log_visibility(
+                        'upload_s3_completed',
+                        correlation_id=correlation_id,
+                        video_id=video_id,
+                        destination=output_str,
+                        duration_ms=_elapsed_ms(transfer_start),
+                    )
                     # Limpiar archivo local después de subir
                     try:
                         out_file.unlink()
@@ -533,16 +609,38 @@ def run(self, *args, **kwargs):
                 # Output es local: output_path es ya un string de filesystem
                 output_str = output_path
                 try:
+                    transfer_start = time.monotonic()
                     shutil.move(str(out_file), output_str)
                     logger.info('Moved processed file to %s', output_str)
+                    _log_visibility(
+                        'output_moved',
+                        correlation_id=correlation_id,
+                        video_id=video_id,
+                        destination=output_str,
+                        duration_ms=_elapsed_ms(transfer_start),
+                    )
                 except Exception as e:
                     logger.error('Failed to move output to final location: %s', e)
                     raise task_self.retry(exc=e, countdown=10, max_retries=2)
 
             # Update database record for the video if video_id is available (direct DB update)
+            db_update_start = time.monotonic()
             _update_db_if_needed(video_id, correlation_id, output_str, db_url_env)
+            _log_visibility(
+                'db_update_completed',
+                correlation_id=correlation_id,
+                video_id=video_id,
+                duration_ms=_elapsed_ms(db_update_start),
+                output=output_str,
+            )
 
             # Return the final path so caller (API) can register it
+            _log_visibility(
+                'task_completed',
+                correlation_id=correlation_id,
+                video_id=video_id,
+                output=output_str,
+            )
             return {"status": "ok", "output": output_str}
 
     except Exception as exc:

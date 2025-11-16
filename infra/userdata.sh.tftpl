@@ -11,7 +11,6 @@ COMPOSE_FILE="${compose_file}"
 
 core_ip="${core_ip}"
 auth_ip="${auth_ip}"
-mq_ip="${mq_ip}"
 obs_ip="${obs_ip}"
 web_ip="${web_ip}"
 worker_ip="${worker_ip}"
@@ -31,6 +30,10 @@ aws_secret_access_key="${aws_secret_access_key}"
 aws_session_token="${aws_session_token}"
 assets_inout_key="${assets_inout_key}"
 assets_wm_key="${assets_wm_key}"
+
+# SQS (broker Celery)
+sqs_broker_url="${sqs_broker_url}"
+sqs_queue_name="${sqs_queue_name}"
 
 # ====== Paquetes base + Docker ======
 apt-get update -y
@@ -80,13 +83,12 @@ DB_URL_CORE=postgresql+asyncpg://anb_user:${rds_password}@${rds_core_endpoint}:5
 DB_URL_AUTH=postgresql+asyncpg://anb_user:${rds_password}@${rds_auth_endpoint}:5432/anb_auth
 DATABASE_URL=postgresql://anb_user:${rds_password}@${rds_core_endpoint}:5432/anb_core
 
-# MQ
-RABBITMQ_DEFAULT_USER=rabbit
-RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_PORT=5672
-RABBITMQ_VHOST=/
-RABBITMQ_URL=amqp://rabbit:rabbitpass@${mq_ip}:5672/%2F
-RABBITMQ_HOST=${mq_ip}
+# SQS (Celery broker)
+SQS_BROKER_URL=${sqs_broker_url}
+SQS_QUEUE_NAME=${sqs_queue_name}
+
+# Logging (persist Loki push URL para que compose lo conserve tras reinicios)
+LOKI_URL=$LOKI_URL_VALUE
 
 # Upstreams (WEB)
 
@@ -128,6 +130,7 @@ EOF
 # (OTLP/Tempo removido) No se configuran variables OTEL en .env
 
 # Solo exportamos LOKI_URL en runtime (los contenedores lo leen por env/compose)
+# Export para esta sesión (docker compose inicial) - persistido también en .env arriba
 export LOKI_URL="$LOKI_URL_VALUE"
 
 # (OTLP/Tempo removido) No se espera por endpoint de trazas
@@ -143,7 +146,6 @@ if [ "$ROLE" = "obs" ]; then
   fi
   # CORE ahora usa EC2 service discovery, no reemplazamos __CORE_IP__ (ya no existe en prometheus.yml)
   sed -i "s/__AUTH_IP__/${auth_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
-  sed -i "s/__MQ_IP__/${mq_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
   sed -i "s/__WORKER_IP__/${worker_ip}/g" /opt/anb-cloud/observability/prometheus/prometheus.yml
 
   if [ -z "${obs_ip}" ]; then
@@ -160,7 +162,6 @@ fi
 # ====== Nginx (solo WEB) ======
 if [ "$ROLE" = "web" ]; then
   sed -i "s/__CORE_IP__/${core_ip}/g" /opt/anb-cloud/nginx/nginx.conf
-  sed -i "s/__MQ_IP__/${mq_ip}/g"   /opt/anb-cloud/nginx/nginx.conf
   sed -i "s/__OBS_IP__/${obs_ip}/g" /opt/anb-cloud/nginx/nginx.conf
 fi
 
@@ -208,7 +209,6 @@ case "$ROLE" in
   web)    docker compose -f "$COMPOSE_PATH" --profile web    up -d ;;
   core)   docker compose -f "$COMPOSE_PATH" --profile core   up -d ;;
   auth)   docker compose -f "$COMPOSE_PATH" --profile auth   up -d ;;
-  mq)     docker compose -f "$COMPOSE_PATH" --profile mq     up -d ;;
   worker) docker compose -f "$COMPOSE_PATH" --profile worker up -d ;;
   obs)    docker compose -f "$COMPOSE_PATH" --profile obs    up -d ;;
 esac

@@ -1,5 +1,4 @@
 import importlib
-import json
 import os
 import sys
 from unittest import mock
@@ -38,95 +37,55 @@ def test_env_broker_and_backend_applied(monkeypatch):
 
 
 def test_task_queues_and_routes_config(monkeypatch):
-    # Provide required env to allow import
+    # Provide required env to allow import con la configuración SQS actual
     mod = reload_module(
         monkeypatch,
-        CELERY_BROKER_URL='amqp://user:pass@host:5672/vhost',
+        CELERY_BROKER_URL='sqs://',
         CELERY_RESULT_BACKEND='rpc://',
+        SQS_QUEUE_NAME='video_tasks',
+        AWS_REGION='us-east-1',
+        SQS_VISIBILITY_TIMEOUT='45',
+        SQS_WAIT_TIME_SECONDS='15',
     )
 
-    # Check default queue/exchange/routing key
-    assert mod.app.conf.task_default_queue == 'video_tasks'
-    assert mod.app.conf.task_default_exchange == 'video'
-    assert mod.app.conf.task_default_routing_key == 'video'
+    # Confirmamos que el módulo lea correctamente la cola objetivo
+    assert mod.QUEUE_NAME == 'video_tasks'
 
-    # task_routes contains wildcard for process_video tasks
     routes = mod.app.conf.task_routes or {}
-    assert 'tasks.process_video.*' in routes
-    assert routes['tasks.process_video.*']['queue'] == 'video_tasks'
+    assert routes == {'tasks.process_video.*': {'queue': 'video_tasks'}}
 
-    # There should be three queues configured with expected names and properties
-    queues = list(mod.app.conf.task_queues)
-    names = {q.name for q in queues}
-    assert {'video_tasks', 'video_retry_60s', 'video_dlq'} <= names
+    # Configuración básica del worker debe permanecer
+    assert mod.app.conf.worker_prefetch_multiplier == 1
+    assert mod.app.conf.task_acks_late is True
+    assert mod.app.conf.worker_hijack_root_logger is False
 
-    def get_queue(n):
-        return next(q for q in queues if q.name == n)
-
-    video_q = get_queue('video_tasks')
-    assert video_q.exchange.name == 'video'
-    assert video_q.routing_key == 'video'
-    assert video_q.durable is True
-    assert video_q.queue_arguments.get('x-dead-letter-exchange') == 'video-dlx'
-    assert video_q.queue_arguments.get('x-dead-letter-routing-key') == 'video.dlq'
-
-    retry_q = get_queue('video_retry_60s')
-    assert retry_q.exchange.name == 'video-retry'
-    assert retry_q.routing_key == 'video.retry.60'
-    assert retry_q.durable is True
-    assert retry_q.queue_arguments.get('x-message-ttl') == 60000
-    assert retry_q.queue_arguments.get('x-dead-letter-exchange') == 'video'
-    assert retry_q.queue_arguments.get('x-dead-letter-routing-key') == 'video'
-
-    dlq_q = get_queue('video_dlq')
-    assert dlq_q.exchange.name == 'video-dlx'
-    assert dlq_q.routing_key == 'video.dlq'
-    assert dlq_q.durable is True
+    opts = mod.app.conf.broker_transport_options
+    assert opts['region'] == 'us-east-1'
+    assert opts['visibility_timeout'] == 45
+    assert opts['wait_time_seconds'] == 15
 
 
-def test_task_failure_publishes_to_dlx(monkeypatch):
+def test_task_failure_updates_metrics(monkeypatch):
     # Reload to get a clean module namespace with required env
     mod = reload_module(
         monkeypatch,
-        CELERY_BROKER_URL='amqp://user:pass@host:5672/vhost',
+        CELERY_BROKER_URL='sqs://',
         CELERY_RESULT_BACKEND='rpc://',
     )
 
-    # Patch Connection and Producer in the module namespace
-    with mock.patch.object(mod, 'Connection') as MockConn, mock.patch.object(mod, 'Producer') as MockProducer:
-        # make Connection a context manager
-        conn_instance = MockConn.return_value
-        conn_instance.__enter__.return_value = conn_instance
-        conn_instance.__exit__.return_value = False
+    # Forzar disponibilidad de métricas y proveer un mock simple
+    mod._PROM_AVAILABLE = True
 
-        producer_instance = MockProducer.return_value
+    counter_mock = mock.Mock()
+    labels_mock = mock.Mock()
+    counter_mock.labels.return_value = labels_mock
+    mod.TASKS_PROCESSED = counter_mock
 
-        # Call the signal handler directly
-        class S:
-            name = 'dummy.task'
-        exc = RuntimeError('boom')
-        mod.on_task_failure(sender=S(), task_id='abc123', exception=exc, args=['x'], kwargs={'y': 1})
+    class DummyTask:
+        name = 'dummy.task'
 
-        # Producer should be constructed with the connection
-        MockProducer.assert_called_once_with(conn_instance)
-        # And publish should be called once with expected routing
-        assert producer_instance.publish.called
-        call = producer_instance.publish.call_args
-        # payload is first positional arg, JSON string
-        payload = call.args[0]
-        data = json.loads(payload)
-        assert data['task_id'] == 'abc123'
-        assert data['task_name'] == 'dummy.task'
-        assert data['args'] == ['x']
-        assert data['kwargs'] == {'y': 1}
-        assert 'boom' in data['exception']
+    exc = RuntimeError('boom')
+    mod.on_task_failure(sender=DummyTask(), task_id='abc123', exception=exc, args=['x'], kwargs={'y': 1})
 
-        # Check kwargs for routing to DLX
-        kwargs = call.kwargs
-        assert kwargs['exchange'] == 'video-dlx'
-        assert kwargs['routing_key'] == 'video.dlq'
-        # declare should include the DLQ queue
-        declare = kwargs.get('declare')
-        assert isinstance(declare, (list, tuple)) and len(declare) == 1
-        # We can't compare the Queue objects directly across reloads, so check name
-        assert getattr(declare[0], 'name', None) == 'video_dlq'
+    counter_mock.labels.assert_called_once_with(task_name='dummy.task', status='failure')
+    labels_mock.inc.assert_called_once_with()

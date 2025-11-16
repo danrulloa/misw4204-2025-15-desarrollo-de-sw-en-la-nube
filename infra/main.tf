@@ -124,10 +124,6 @@ variable "instance_type_auth" {
   type    = string
   default = "t3.small"
 }
-variable "instance_type_mq" {
-  type    = string
-  default = "t3.small"
-}
 variable "instance_type_worker" {
   type    = string
   default = "t3.large"
@@ -143,6 +139,9 @@ provider "aws" {
   region  = var.region
   profile = var.aws_profile != "" ? var.aws_profile : null
 }
+
+# SQS (Celery broker) variables
+## SQS settings are derived from provisioned resources (no manual variables)
 
 # Detectar sistema operativo del host que ejecuta Terraform (Windows vs Unix)
 locals {
@@ -224,9 +223,10 @@ data "aws_ami" "ubuntu22" {
 }
 
 locals {
-  subnet_id = length(data.aws_subnets.az.ids) > 0 ? element(data.aws_subnets.az.ids, 0) : element(data.aws_subnets.default.ids, 0)
-  ami_id    = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu22.id
-  tags_base = { Project = "ANB", Environment = "lab" }
+  subnet_ids = slice(data.aws_subnets.default.ids, 0, min(2, length(data.aws_subnets.default.ids)))
+  subnet_id  = element(data.aws_subnets.default.ids, 0)
+  ami_id     = var.ami_id != "" ? var.ami_id : data.aws_ami.ubuntu22.id
+  tags_base  = { Project = "ANB", Environment = "lab" }
 }
 
 # ========== Security Groups ==========
@@ -492,83 +492,6 @@ resource "aws_security_group_rule" "worker_egress_udp" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-# MQ: 5672 desde CORE y WORKER; 15672 UI solo admin
-resource "aws_security_group" "mq" {
-  name        = "anb-mq-sg"
-  description = "RabbitMQ ingress"
-  vpc_id      = data.aws_vpc.default.id
-  tags        = local.tags_base
-}
-resource "aws_security_group_rule" "mq_from_core_5672" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.mq.id
-  from_port                = 5672
-  to_port                  = 5672
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.core.id
-}
-resource "aws_security_group_rule" "mq_from_worker_5672" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.mq.id
-  from_port                = 5672
-  to_port                  = 5672
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.worker.id
-}
-resource "aws_security_group_rule" "mq_ui_admin" {
-  type              = "ingress"
-  security_group_id = aws_security_group.mq.id
-  from_port         = 15672
-  to_port           = 15672
-  protocol          = "tcp"
-  cidr_blocks       = [var.admin_cidr]
-}
-
-resource "aws_security_group_rule" "mq_from_alb_15672" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.mq.id
-  from_port                = 15672
-  to_port                  = 15672
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.alb.id
-}
-
-# Allow Prometheus (OBS) to scrape RabbitMQ exporter and cadvisor
-resource "aws_security_group_rule" "mq_from_obs_15692" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.mq.id
-  from_port                = 15692
-  to_port                  = 15692
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
-resource "aws_security_group_rule" "mq_from_obs_8080" {
-  type                     = "ingress"
-  security_group_id        = aws_security_group.mq.id
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.obs.id
-}
-
-# Reglas de egress para MQ (acceso a internet)
-resource "aws_security_group_rule" "mq_egress_all" {
-  type              = "egress"
-  security_group_id = aws_security_group.mq.id
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-resource "aws_security_group_rule" "mq_egress_udp" {
-  type              = "egress"
-  security_group_id = aws_security_group.mq.id
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "udp"
-  cidr_blocks       = ["0.0.0.0/0"]
-}
 
 # OBS: 9090, 3000, 3100 solo admin
 resource "aws_security_group" "obs" {
@@ -679,14 +602,6 @@ resource "aws_security_group_rule" "core_ssh" {
   cidr_blocks       = [var.admin_cidr]
 }
 
-resource "aws_security_group_rule" "mq_ssh" {
-  type              = "ingress"
-  security_group_id = aws_security_group.mq.id
-  from_port         = 22
-  to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = [var.admin_cidr]
-}
 
 resource "aws_security_group_rule" "worker_ssh" {
   type              = "ingress"
@@ -728,50 +643,10 @@ resource "aws_security_group_rule" "obs_ssh" {
 
 # ========== EC2 por rol con user-data (templatefile) ==========
 # Orden sin ciclos:
-#   MQ no depende de nadie
-#   CORE usa AutoScalingGroup (depende de MQ y RDS)
-#   WORKER depende de MQ
+#   CORE usa AutoScalingGroup (depende de RDS)
+#   WORKER no depende de MQ
 #   WEB depende de CORE
 #   OBS no depende de otros (Prometheus se puede configurar luego)
-
-
-resource "aws_instance" "mq" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_mq
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.mq.id]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role                  = "mq",
-    repo_url              = var.repo_url,
-    repo_branch           = var.repo_branch,
-    compose_file          = var.compose_file,
-    web_ip                = "",
-    core_ip               = "",
-    mq_ip                 = "",
-    worker_ip             = "",
-    obs_ip                = "",
-    auth_ip               = "",
-    alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = "",
-    rds_auth_endpoint     = "",
-    rds_password          = var.rds_password,
-    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key      = "",
-    assets_wm_key         = "",
-    aws_region            = try(local.aws_env.aws_region, var.region),
-    aws_profile           = var.aws_profile,
-    aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
-    aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
-    aws_session_token     = try(local.aws_env.aws_session_token, "")
-  })
-  tags = merge(local.tags_base, { Name = "anb-mq" })
-  root_block_device {
-    volume_size = 30
-    volume_type = "gp3"
-  }
-}
 
 ## CORE ahora se gestiona con Launch Template + AutoScalingGroup
 
@@ -789,23 +664,25 @@ resource "aws_launch_template" "core_lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
-    role                  = "core",
-    repo_url              = var.repo_url,
-    repo_branch           = var.repo_branch,
-    compose_file          = var.compose_file,
-    web_ip                = "",
-    core_ip               = "",
-    mq_ip                 = aws_instance.mq.private_ip,
-    worker_ip             = "",
-    obs_ip                = "",
-    auth_ip               = "",
-    alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = aws_db_instance.core.address,
-    rds_auth_endpoint     = aws_db_instance.auth.address,
-    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
-    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key      = "",
-    assets_wm_key         = "",
+    role              = "core",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
+    compose_file      = var.compose_file,
+    web_ip            = "",
+    core_ip           = "",
+    worker_ip         = "",
+    obs_ip            = "",
+    auth_ip           = "",
+    alb_dns           = aws_lb.public.dns_name,
+    rds_core_endpoint = aws_db_instance.core.address,
+    rds_auth_endpoint = aws_db_instance.auth.address,
+    rds_password      = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket         = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key  = "",
+    assets_wm_key     = "",
+    # Broker SQS sin parámetros en la URL; región va en AWS_REGION y transport options
+    sqs_broker_url        = "sqs://",
+    sqs_queue_name        = aws_sqs_queue.video_tasks.name,
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -834,10 +711,10 @@ resource "aws_launch_template" "core_lt" {
 
 resource "aws_autoscaling_group" "core" {
   name                      = "anb-core-asg"
-  desired_capacity          = 1
-  min_size                  = 1
-  max_size                  = 3
-  vpc_zone_identifier       = [local.subnet_id]
+  desired_capacity          = 2
+  min_size                  = 2
+  max_size                  = 4
+  vpc_zone_identifier = local.subnet_ids
   health_check_type         = "ELB"
   health_check_grace_period = 120
   # Reducir tiempo entre decisiones del ASG y warmup para TargetTracking
@@ -873,7 +750,7 @@ resource "aws_autoscaling_group" "core" {
     create_before_destroy = true
   }
 
-  depends_on = [aws_instance.mq, aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
+  depends_on = [aws_db_instance.core, aws_db_instance.auth, aws_s3_bucket.anb_videos]
 }
 
 resource "aws_autoscaling_policy" "core_cpu_target" {
@@ -885,7 +762,7 @@ resource "aws_autoscaling_policy" "core_cpu_target" {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
-    target_value     = 60
+    target_value     = 50
     disable_scale_in = false
   }
 }
@@ -899,23 +776,25 @@ resource "aws_instance" "auth" {
   vpc_security_group_ids      = [aws_security_group.auth.id]
   depends_on                  = [aws_db_instance.auth, aws_s3_bucket.anb_videos]
   user_data = templatefile("${path.module}/userdata.sh.tftpl", {
-    role                  = "auth",
-    repo_url              = var.repo_url,
-    repo_branch           = var.repo_branch,
-    compose_file          = var.compose_file,
-    web_ip                = "",
-    core_ip               = "",
-    mq_ip                 = "",
-    worker_ip             = "",
-    obs_ip                = "",
-    auth_ip               = "",
-    alb_dns               = aws_lb.public.dns_name,
-    rds_core_endpoint     = aws_db_instance.core.address,
-    rds_auth_endpoint     = aws_db_instance.auth.address,
-    rds_password          = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
-    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
-    assets_inout_key      = "",
-    assets_wm_key         = "",
+    role              = "auth",
+    repo_url          = var.repo_url,
+    repo_branch       = var.repo_branch,
+    compose_file      = var.compose_file,
+    web_ip            = "",
+    core_ip           = "",
+    worker_ip         = "",
+    obs_ip            = "",
+    auth_ip           = "",
+    alb_dns           = aws_lb.public.dns_name,
+    rds_core_endpoint = aws_db_instance.core.address,
+    rds_auth_endpoint = aws_db_instance.auth.address,
+    rds_password      = var.rds_password != "" ? var.rds_password : "anb_pass_change_me",
+    s3_bucket         = aws_s3_bucket.anb_videos.bucket,
+    assets_inout_key  = "",
+    assets_wm_key     = "",
+    # Auth no usa la cola, pero el template requiere estas claves; dejamos valores vacíos
+    sqs_broker_url        = "",
+    sqs_queue_name        = "",
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -929,22 +808,25 @@ resource "aws_instance" "auth" {
   }
 }
 
-resource "aws_instance" "worker" {
-  ami                         = local.ami_id
-  instance_type               = var.instance_type_worker
-  subnet_id                   = local.subnet_id
-  associate_public_ip_address = true
-  key_name                    = var.key_name == "" ? null : var.key_name
-  vpc_security_group_ids      = [aws_security_group.worker.id]
-  depends_on                  = [aws_instance.mq, aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
-  user_data = templatefile("${path.module}/userdata.sh.tftpl", {
+resource "aws_launch_template" "worker_lt" {
+  name_prefix   = "anb-worker-lt-"
+  image_id      = local.ami_id
+  instance_type = var.instance_type_worker
+  key_name      = var.key_name == "" ? null : var.key_name
+
+  vpc_security_group_ids = [aws_security_group.worker.id]
+
+  monitoring {
+    enabled = true
+  }
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh.tftpl", {
     role                  = "worker",
     repo_url              = var.repo_url,
     repo_branch           = var.repo_branch,
     compose_file          = var.compose_file,
     web_ip                = "",
     core_ip               = "",
-    mq_ip                 = aws_instance.mq.private_ip,
     worker_ip             = "",
     obs_ip                = "",
     auth_ip               = "",
@@ -952,19 +834,89 @@ resource "aws_instance" "worker" {
     rds_core_endpoint     = aws_db_instance.core.address,
     rds_auth_endpoint     = "",
     rds_password          = var.rds_password,
-    s3_bucket             = aws_s3_bucket.anb_videos.bucket, # Worker necesita S3 para leer videos
+    s3_bucket             = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key      = var.assets_inout_key,
     assets_wm_key         = var.assets_wm_key,
+    sqs_broker_url        = "sqs://",
+    sqs_queue_name        = aws_sqs_queue.video_tasks.name,
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
     aws_secret_access_key = try(local.aws_env.aws_secret_access_key, ""),
     aws_session_token     = try(local.aws_env.aws_session_token, "")
-  })
-  tags = merge(local.tags_base, { Name = "anb-worker" })
-  root_block_device {
-    volume_size = 40
-    volume_type = "gp3"
+  }))
+
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_size = 40
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = merge(local.tags_base, { Name = "anb-worker", Role = "worker" })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags          = local.tags_base
+  }
+}
+
+resource "aws_autoscaling_group" "worker" {
+  name                      = "anb-worker-asg"
+  desired_capacity          = 1
+  min_size                  = 1
+  max_size                  = 3
+  vpc_zone_identifier       = [local.subnet_id]
+  health_check_type         = "EC2"
+  health_check_grace_period = 120
+  default_cooldown          = 120
+  default_instance_warmup   = 120
+
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupStandbyInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalInstances"
+  ]
+
+  launch_template {
+    id      = aws_launch_template.worker_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "anb-worker"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_s3_bucket.anb_videos, aws_s3_object.asset_inout, aws_s3_object.asset_wm]
+}
+
+resource "aws_autoscaling_policy" "worker_cpu_target" {
+  name                   = "anb-worker-cpu-60"
+  autoscaling_group_name = aws_autoscaling_group.worker.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+    target_value     = 60
+    disable_scale_in = false
   }
 }
 
@@ -984,8 +936,7 @@ resource "aws_instance" "obs" {
     web_ip                = "",
     core_ip               = "",
     auth_ip               = aws_instance.auth.private_ip,
-    mq_ip                 = aws_instance.mq.private_ip,
-    worker_ip             = aws_instance.worker.private_ip,
+    worker_ip             = "",
     obs_ip                = "",
     alb_dns               = aws_lb.public.dns_name,
     rds_core_endpoint     = aws_db_instance.core.address,
@@ -994,6 +945,8 @@ resource "aws_instance" "obs" {
     s3_bucket             = aws_s3_bucket.anb_videos.bucket,
     assets_inout_key      = "",
     assets_wm_key         = "",
+    sqs_broker_url        = "sqs://",
+    sqs_queue_name        = aws_sqs_queue.video_tasks.name,
     aws_region            = try(local.aws_env.aws_region, var.region),
     aws_profile           = var.aws_profile,
     aws_access_key_id     = try(local.aws_env.aws_access_key_id, ""),
@@ -1116,6 +1069,24 @@ resource "aws_s3_object" "asset_wm" {
   etag   = filemd5(abspath("${path.module}/${var.assets_wm_path}"))
 }
 
+# ========== SQS (Celery broker) ==========
+resource "aws_sqs_queue" "video_dlq" {
+  name                      = "video_dlq"
+  message_retention_seconds = 1209600 # 14 días
+}
+
+resource "aws_sqs_queue" "video_tasks" {
+  name                       = "video_tasks"
+  visibility_timeout_seconds = 60
+  message_retention_seconds  = 1209600 # 14 días
+  receive_wait_time_seconds  = 20      # long polling
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.video_dlq.arn
+    maxReceiveCount     = 5
+  })
+}
+
 # ========== Application Load Balancer ==========
 resource "aws_lb" "public" {
   name               = "anb-public-alb"
@@ -1163,18 +1134,6 @@ resource "aws_lb_target_group" "tg_auth" {
   tags = local.tags_base
 }
 
-resource "aws_lb_target_group" "tg_rmq" {
-  name        = "anb-tg-rmq"
-  port        = 15672
-  protocol    = "HTTP"
-  target_type = "instance"
-  vpc_id      = data.aws_vpc.default.id
-  health_check {
-    path    = "/rabbitmq/"
-    matcher = "200-399"
-  }
-  tags = local.tags_base
-}
 
 resource "aws_lb_target_group" "tg_grafana" {
   name        = "anb-tg-grafana"
@@ -1305,40 +1264,6 @@ resource "aws_lb_listener_rule" "r_auth" {
   }
 }
 
-resource "aws_lb_listener_rule" "r_rmq_redirect" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 30
-  action {
-    type = "redirect"
-    redirect {
-      host        = "#{host}"
-      path        = "/rabbitmq/"
-      protocol    = "#{protocol}"
-      port        = "#{port}"
-      query       = "#{query}"
-      status_code = "HTTP_301"
-    }
-  }
-  condition {
-    path_pattern {
-      values = ["/rabbitmq"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "r_rmq" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 31
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tg_rmq.arn
-  }
-  condition {
-    path_pattern {
-      values = ["/rabbitmq/*"]
-    }
-  }
-}
 
 resource "aws_lb_listener_rule" "r_grafana_redirect" {
   listener_arn = aws_lb_listener.http.arn
@@ -1471,10 +1396,6 @@ resource "aws_lb_target_group_attachment" "att_auth_auth" {
   target_id        = aws_instance.auth.id
 }
 
-resource "aws_lb_target_group_attachment" "att_rmq_mq" {
-  target_group_arn = aws_lb_target_group.tg_rmq.arn
-  target_id        = aws_instance.mq.id
-}
 
 resource "aws_lb_target_group_attachment" "att_grafana_obs" {
   target_group_arn = aws_lb_target_group.tg_grafana.arn
@@ -1584,8 +1505,7 @@ output "public_ips" {
   value = {
     core   = "ASG-managed"
     auth   = aws_instance.auth.public_ip
-    mq     = aws_instance.mq.public_ip
-    worker = aws_instance.worker.public_ip
+    worker = "ASG-managed"
     obs    = aws_instance.obs.public_ip
   }
 }
@@ -1594,8 +1514,7 @@ output "private_ips" {
   value = {
     core   = "ASG-managed"
     auth   = aws_instance.auth.private_ip
-    mq     = aws_instance.mq.private_ip
-    worker = aws_instance.worker.private_ip
+    worker = "ASG-managed"
     obs    = aws_instance.obs.private_ip
   }
 }
@@ -1616,7 +1535,6 @@ output "service_urls" {
     auth_status        = "http://${aws_lb.public.dns_name}/auth/api/v1/status"
     auth_docs          = "http://${aws_lb.public.dns_name}/auth/docs"
     auth_openapi       = "http://${aws_lb.public.dns_name}/auth/openapi.json"
-    rabbitmq_ui        = "http://${aws_lb.public.dns_name}/rabbitmq/"
     grafana            = "http://${aws_lb.public.dns_name}/grafana/"
     prometheus         = "http://${aws_lb.public.dns_name}/prometheus/"
     prometheus_targets = "http://${aws_lb.public.dns_name}/prometheus/targets"
@@ -1652,6 +1570,33 @@ output "core_asg_private_ips" {
   value       = data.aws_instances.core.private_ips
 }
 
+## Descubrimiento de instancias WORKER lanzadas por el ASG (para referencia)
+data "aws_instances" "worker" {
+  filter {
+    name   = "tag:Name"
+    values = ["anb-worker"]
+  }
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running"]
+  }
+}
+
+output "worker_asg_instance_ids" {
+  description = "Instance IDs in the WORKER ASG"
+  value       = data.aws_instances.worker.ids
+}
+
+output "worker_asg_public_ips" {
+  description = "Public IPs of WORKER ASG instances"
+  value       = data.aws_instances.worker.public_ips
+}
+
+output "worker_asg_private_ips" {
+  description = "Private IPs of WORKER ASG instances"
+  value       = data.aws_instances.worker.private_ips
+}
+
 output "rds_endpoints" {
   description = "RDS endpoints (host:port)"
   value = {
@@ -1671,4 +1616,24 @@ output "rds_addresses" {
 output "s3_bucket_name" {
   description = "Nombre del bucket S3"
   value       = aws_s3_bucket.anb_videos.bucket
+}
+
+output "sqs_queue_url" {
+  description = "URL de la cola SQS principal"
+  value       = aws_sqs_queue.video_tasks.url
+}
+
+output "sqs_queue_arn" {
+  description = "ARN de la cola SQS principal"
+  value       = aws_sqs_queue.video_tasks.arn
+}
+
+output "sqs_dlq_url" {
+  description = "URL de la DLQ de SQS"
+  value       = aws_sqs_queue.video_dlq.url
+}
+
+output "sqs_dlq_arn" {
+  description = "ARN de la DLQ de SQS"
+  value       = aws_sqs_queue.video_dlq.arn
 }

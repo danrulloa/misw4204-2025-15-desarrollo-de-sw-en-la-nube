@@ -5,8 +5,6 @@ import traceback
 import os
 import time
 
-from kombu import Exchange, Queue
-
 # Prometheus metrics (export to /metrics via start_http_server)
 try:
     from prometheus_client import Counter, Histogram, start_http_server
@@ -14,7 +12,29 @@ try:
 except Exception:
     _PROM_AVAILABLE = False
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format='[%(levelname)s] %(message)s')
+try:
+    from pythonjsonlogger import jsonlogger
+    _JSON_LOGGING = True
+except Exception:
+    _JSON_LOGGING = False
+
+
+def _configure_logging():
+    """Attach a JSON formatter if available, otherwise fallback to plain text."""
+    handler = logging.StreamHandler(sys.stdout)
+    if _JSON_LOGGING:
+        formatter = jsonlogger.JsonFormatter(
+            '%(asctime)s %(levelname)s %(name)s %(message)s'
+        )
+    else:
+        formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(logging.INFO)
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 # Tracing removido (Tempo rollback)
@@ -22,64 +42,41 @@ logger = logging.getLogger(__name__)
 
 # Subclass Celery to hold shared constants (avoids duplicating literals like 'video.dlq')
 class VideoCelery(Celery):
-    # Exchanges / routing keys used across the module
-    VIDEO_EXCHANGE = 'video'
-    VIDEO_DLX_EXCHANGE = 'video-dlx'
-    VIDEO_DLQ_ROUTING_KEY = 'video.dlq'
-    VIDEO_RETRY_EXCHANGE = 'video-retry'
+    """Celery subclass (reservado por si se requiere extender en el futuro)."""
+    pass
 
 
-# Leer broker/backend desde variables de entorno (deben estar presentes)
-# No usar valores por defecto para fallar temprano si falta configuración
-BROKER_URL = os.environ['CELERY_BROKER_URL']
-RESULT_BACKEND = os.environ['CELERY_RESULT_BACKEND']
+BROKER_URL_RAW = os.getenv('CELERY_BROKER_URL', 'sqs://').strip() or 'sqs://'
+# Normalizar broker (quitar query ?region= us-east-1 si quedó de configuraciones anteriores)
+if BROKER_URL_RAW.startswith('sqs://') and '?region=' in BROKER_URL_RAW:
+    BROKER_URL_RAW = 'sqs://'
+BROKER_URL = BROKER_URL_RAW
+RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'rpc://')
 
 # Instantiate our Celery subclass so we can reference the constants from it
 app = VideoCelery('video_worker', broker=BROKER_URL, backend=RESULT_BACKEND)
 
-# Exchanges y colas (coinciden con rabbitmq/definitions.json)
-video_ex = Exchange(app.VIDEO_EXCHANGE, type='direct', durable=True)
-dlx_ex = Exchange(app.VIDEO_DLX_EXCHANGE, type='direct', durable=True)
-retry_ex = Exchange(app.VIDEO_RETRY_EXCHANGE, type='direct', durable=True)
+QUEUE_NAME = os.getenv('SQS_QUEUE_NAME', 'video_tasks')
 
-video_queue = Queue(
-    'video_tasks',
-    exchange=video_ex,
-    routing_key='video',
-    durable=True,
-    queue_arguments={
-        'x-dead-letter-exchange': app.VIDEO_DLX_EXCHANGE,
-        'x-dead-letter-routing-key': app.VIDEO_DLQ_ROUTING_KEY
-    },
-)
+# Configuración mínima para SQS (sin exchanges/routing AMQP)
+app.conf.task_default_queue = QUEUE_NAME
+app.conf.worker_prefetch_multiplier = 1
+app.conf.task_acks_late = True
+app.conf.worker_hijack_root_logger = False
+app.conf.worker_log_format = '%(message)s'
+app.conf.worker_task_log_format = '%(message)s'
 
-retry_queue_60s = Queue(
-    'video_retry_60s',
-    exchange=retry_ex,
-    routing_key='video.retry.60',
-    durable=True,
-    queue_arguments={
-        'x-message-ttl': 60000,
-        'x-dead-letter-exchange': app.VIDEO_EXCHANGE,
-        'x-dead-letter-routing-key': 'video'
-    },
-)
-
-# dlq queue uses the DLX exchange and the DLQ routing key constant
-dlq_queue = Queue('video_dlq', exchange=dlx_ex, routing_key=app.VIDEO_DLQ_ROUTING_KEY, durable=True)
-
-# Configuración de Celery para trabajar con colas durables y reintentos por TTL
-app.conf.task_queues = (video_queue, retry_queue_60s, dlq_queue)
-app.conf.task_default_queue = 'video_tasks'
-app.conf.task_default_exchange = app.VIDEO_EXCHANGE
-app.conf.task_default_routing_key = 'video'
+region = os.getenv('AWS_REGION', 'us-east-1')
+visibility_timeout = int(os.getenv('SQS_VISIBILITY_TIMEOUT', '60'))
+wait_time_seconds = int(os.getenv('SQS_WAIT_TIME_SECONDS', '20'))
+app.conf.broker_transport_options = {
+    'region': region,
+    'visibility_timeout': visibility_timeout,
+    'wait_time_seconds': wait_time_seconds,
+}
 
 app.conf.update(
-    task_routes={
-        'tasks.process_video.*': {'queue': 'video_tasks'},
-    },
-    task_acks_late=True,
-    worker_prefetch_multiplier=1,
+    task_routes={'tasks.process_video.*': {'queue': QUEUE_NAME}},
     result_expires=3600,
 )
 
@@ -165,7 +162,6 @@ if _PROM_AVAILABLE:
 # handler para registrar fallos y empujar metadata a la DLQ (informativo)
 from celery.signals import task_failure  # noqa: E402
 import json  # noqa: E402
-from kombu import Connection, Producer  # noqa: E402
 from celery.signals import task_prerun, task_postrun  # noqa: E402
 
 
@@ -178,22 +174,8 @@ def on_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs
             TASKS_PROCESSED.labels(task_name=getattr(sender, 'name', 'unknown'), status='failure').inc()
     except Exception:
         pass
-    try:
-        # Publicar metadata en la exchange del DLQ para facilitar inspección (no obligatorio)
-        conn = Connection(BROKER_URL)
-        with conn:
-            producer = Producer(conn)
-            payload = json.dumps({
-                'task_id': task_id,
-                'task_name': getattr(sender, 'name', None),
-                'args': args,
-                'kwargs': kwargs,
-                'exception': str(exception),
-            })
-            # publicamos directamente a la exchange video-dlx con routing key video.dlq
-            producer.publish(payload, exchange=app.VIDEO_DLX_EXCHANGE, routing_key=app.VIDEO_DLQ_ROUTING_KEY, declare=[dlq_queue])
-    except Exception as e:
-        logger.error(f'No se pudo publicar metadata en DLQ: {e}')
+    # Con SQS puro no replicamos DLQ publish manual (la política redrive maneja fallos).
+    pass
 
 
 @task_prerun.connect

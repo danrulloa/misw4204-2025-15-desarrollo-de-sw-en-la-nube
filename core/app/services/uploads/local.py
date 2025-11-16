@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.video import Video, VideoStatus
 from app.services.storage.s3 import S3StorageAdapter
-from app.services.mq.rabbit import RabbitPublisher
+from app.services.mq.publisher import QueuePublisher
 
 logger = logging.getLogger("anb.uploads")
 
@@ -224,7 +224,7 @@ class LocalUploadService:
             )
             # Publicar en MQ
             mq_t0 = time.perf_counter()
-            pub = RabbitPublisher()
+            pub = QueuePublisher()
             payload = {
                 "video_id": video_id,
                 "input_path": input_path,
