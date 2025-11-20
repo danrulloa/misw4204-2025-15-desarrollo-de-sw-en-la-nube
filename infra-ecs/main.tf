@@ -320,8 +320,8 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "AWS_SESSION_TOKEN", value = var.aws_session_token },
         { name = "S3_BUCKET", value = aws_s3_bucket.videos.bucket },
         { name = "S3_REGION", value = var.aws_region },
-        { name = "ANB_INOUT_PATH", value = "/app/assets/inout.mp4" },
-        { name = "ANB_WATERMARK_PATH", value = "/app/assets/watermark.png" }
+        { name = "ANB_INOUT_PATH", value = "assets/inout.mp4" },
+        { name = "ANB_WATERMARK_PATH", value = "assets/watermark.png" }
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -357,7 +357,8 @@ resource "aws_ecs_task_definition" "auth" {
         { name = "ALGORITHM", value = "HS256" },
         { name = "ACCESS_TOKEN_SECRET_KEY", value = var.jwt_secret },
         { name = "REFRESH_TOKEN_SECRET_KEY", value = var.jwt_secret },
-        { name = "TOKEN_EXPIRE", value = "600" }
+        { name = "TOKEN_EXPIRE", value = "600" },
+        { name = "REFRESH_TOKEN_EXPIRE", value = "30" }
       ],
     logConfiguration = {
         logDriver = "awslogs"
