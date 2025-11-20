@@ -479,3 +479,15 @@ resource "aws_appautoscaling_policy" "worker_cpu" {
     target_value = 60.0
   }
 }
+
+resource "aws_s3_object" "inout_mp4" {
+  bucket = aws_s3_bucket.videos.id
+  key    = "assets/inout.mp4"
+  source = "${path.module}/assets/inout.mp4"
+}
+
+resource "aws_s3_object" "watermark_png" {
+  bucket = aws_s3_bucket.videos.id
+  key    = "assets/watermark.png"
+  source = "${path.module}/assets/watermark.png"
+}
