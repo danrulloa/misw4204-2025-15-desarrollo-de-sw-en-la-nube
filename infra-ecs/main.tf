@@ -483,11 +483,11 @@ resource "aws_appautoscaling_policy" "worker_cpu" {
 resource "aws_s3_object" "inout_mp4" {
   bucket = aws_s3_bucket.videos.id
   key    = "assets/inout.mp4"
-  source = "${path.module}/assets/inout.mp4"
+  source = "${path.module}/../worker/assets/inout.mp4" # Ajuste de ruta
 }
 
 resource "aws_s3_object" "watermark_png" {
   bucket = aws_s3_bucket.videos.id
   key    = "assets/watermark.png"
-  source = "${path.module}/assets/watermark.png"
+  source = "${path.module}/../worker/assets/watermark.png" # Ajuste de ruta
 }
