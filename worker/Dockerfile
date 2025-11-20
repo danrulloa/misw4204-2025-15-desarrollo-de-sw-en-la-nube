@@ -18,4 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Copiar assets al contenedor
+COPY assets/inout.mp4 /app/assets/inout.mp4
+COPY assets/watermark.png /app/assets/watermark.png
+
 CMD ["celery", "-A", "celery_app", "worker", "--loglevel=info"]
