@@ -220,8 +220,12 @@ resource "aws_lb_target_group" "auth" {
   target_type = "ip"
 
   health_check {
-    path                = "/health"
+    path                = "/auth/api/v1/status"
     matcher             = "200-399"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
   }
 }
 
@@ -258,8 +262,8 @@ resource "aws_ecs_task_definition" "core" {
   family                   = "anb-core"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = "2048"
+  memory                   = "4096"
   execution_role_arn       = data.aws_iam_role.lab_role.arn
   task_role_arn            = data.aws_iam_role.lab_role.arn
 
@@ -300,8 +304,8 @@ resource "aws_ecs_task_definition" "worker" {
   family                   = "anb-worker"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 1024 # Más CPU para FFmpeg
-  memory                   = 2048 # Más RAM para video
+  cpu                      = "2048"
+  memory                   = "4096"
   execution_role_arn       = data.aws_iam_role.lab_role.arn
   task_role_arn            = data.aws_iam_role.lab_role.arn
 
@@ -340,8 +344,8 @@ resource "aws_ecs_task_definition" "auth" {
   family                   = "anb-auth"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = data.aws_iam_role.lab_role.arn
   task_role_arn            = data.aws_iam_role.lab_role.arn
 
