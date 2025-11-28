@@ -13,6 +13,14 @@ Todos los scripts suben videos usando `POST /api/videos/upload` y requieren aute
 
 ---
 
+## Resultados de Pruebas (Entrega 5)
+
+Para ver el análisis detallado de rendimiento sobre la arquitectura ECS Fargate (PaaS), consulta:
+- **[Análisis de Pruebas de Carga - Entrega 5](../capacity-planning/pruebas_de_carga_entrega5.md)**
+- [Wiki: Resultados de Pruebas](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Pruebas-carga-entrega-5)
+
+---
+
 ## Opción 1: Ejecutar desde Instancia K6 en AWS Lab (Recomendado)
 
 **Ventaja**: Menor latencia de red, resultados más precisos.

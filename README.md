@@ -31,18 +31,18 @@ Este proyecto ha evolucionado a lo largo de **4 entregas académicas**, cada una
 
 ### Resumen Comparativo
 
-| Aspecto | **Entrega 1** | **Entrega 2** | **Entrega 3** | **Entrega 4** |
-|---------|---------------|---------------|---------------|---------------|
-| **Ambiente** | Docker Compose Local | AWS EC2 (6 instancias) | AWS con servicios gestionados | AWS con servicios gestionados |
-| **Base de Datos** | PostgreSQL en contenedores | PostgreSQL en contenedores | Amazon RDS PostgreSQL | Amazon RDS PostgreSQL |
-| **Almacenamiento** | Volúmenes Docker locales | Volúmenes EBS | Amazon S3 | Amazon S3 |
-| **Balanceador** | Nginx (contenedor) | Nginx (instancia EC2) | Application Load Balancer (ALB) | Application Load Balancer (ALB) Multi-AZ |
-| **Escalabilidad** | Manual (recrear contenedores) | Manual (recrear instancias) | Automática (Auto Scaling Group - Core API) | Automática (ASG Core API + ASG Workers) |
-| **Alta Disponibilidad** | No | No | Sí (ALB) | Sí (ALB + Multi-AZ Core API) |
-| **Message Broker** | RabbitMQ (contenedor) | RabbitMQ (instancia EC2) | RabbitMQ (instancia EC2) | Amazon SQS (gestionado) |
-| **Workers** | Celery (contenedor) | Celery (instancia EC2 fija) | Celery (instancia EC2 fija) | Celery (Auto Scaling Group) |
-| **Infraestructura** | Docker Compose | Terraform + EC2 | Terraform + AWS (RDS, S3, ALB, ASG) | Terraform + AWS (RDS, S3, ALB, ASG, SQS) |
-| **Observabilidad** | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki + CloudWatch | Prometheus, Grafana, Loki + CloudWatch |
+| Aspecto | **Entrega 1** | **Entrega 2** | **Entrega 3** | **Entrega 4** | **Entrega 5** |
+|---------|---------------|---------------|---------------|---------------|---------------|
+| **Ambiente** | Docker Compose Local | AWS EC2 (6 instancias) | AWS con servicios gestionados | AWS con servicios gestionados | AWS PaaS (Serverless) |
+| **Base de Datos** | PostgreSQL en contenedores | PostgreSQL en contenedores | Amazon RDS PostgreSQL | Amazon RDS PostgreSQL | Amazon RDS PostgreSQL |
+| **Almacenamiento** | Volúmenes Docker locales | Volúmenes EBS | Amazon S3 | Amazon S3 | Amazon S3 |
+| **Balanceador** | Nginx (contenedor) | Nginx (instancia EC2) | ALB | ALB Multi-AZ | ALB Multi-AZ |
+| **Escalabilidad** | Manual | Manual | Automática (ASG Core) | Automática (ASG Core + Workers) | Automática (ECS Service Auto Scaling) |
+| **Alta Disponibilidad** | No | No | Sí (ALB) | Sí (ALB + Multi-AZ) | Sí (Multi-AZ Gestionado) |
+| **Message Broker** | RabbitMQ (contenedor) | RabbitMQ (instancia EC2) | RabbitMQ (instancia EC2) | Amazon SQS (gestionado) | Amazon SQS (gestionado) |
+| **Workers** | Celery (contenedor) | Celery (instancia EC2) | Celery (instancia EC2) | Celery (ASG) | Celery (ECS Fargate) |
+| **Infraestructura** | Docker Compose | Terraform + EC2 | Terraform + AWS | Terraform + AWS | Terraform + ECS Fargate |
+| **Observabilidad** | Prometheus, Grafana, Loki | Prometheus, Grafana, Loki | CloudWatch | CloudWatch | CloudWatch + Container Insights |
 
 ---
 
@@ -323,6 +323,52 @@ Una vez desplegado, accede a los servicios a través del DNS del ALB:
 - [Pruebas de Carga - Entrega 4](capacity-planning/pruebas_de_carga_entrega4.md)
 - [Wiki del Proyecto - Entrega 4](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-4)
 - [Infraestructura Terraform](infra/README.md)
+
+---
+
+## Entrega 5: Despliegue en PaaS (ECS)
+
+**Objetivo:** Migración de la arquitectura IaaS (EC2) a una arquitectura PaaS utilizando **Amazon ECS con Fargate**, eliminando la gestión directa de servidores y mejorando la eficiencia operativa.
+
+### Características
+
+- **Amazon ECS (Fargate)**: Orquestación de contenedores sin servidor (Serverless Compute)
+- **Servicios ECS**: Core API y Workers desplegados como servicios escalables
+- **Tareas ECS**: Auth Service desplegado como tarea independiente
+- **Application Load Balancer (ALB)**: Balanceo de carga para servicios ECS
+- **Amazon SQS**: Integración nativa para comunicación asíncrona
+- **Alta Disponibilidad**: Despliegue multi-AZ gestionado por AWS
+
+### Cambios Principales vs Entrega 4
+
+- **EC2 ASG → ECS Fargate**: Reemplazo de instancias EC2 por tareas Fargate gestionadas
+- **Gestión de Infraestructura**: Eliminación de scripts `user-data` complejos en favor de definiciones de tareas (Task Definitions)
+- **Escalado**: Auto-scaling basado en métricas de servicio ECS (CPU/Memoria)
+- **Eficiencia**: Mayor throughput en procesamiento de video (Workers) gracias a menor overhead de SO
+
+### Inicio Rápido
+
+La infraestructura de esta entrega se encuentra en el directorio `infra-ecs`.
+
+```bash
+# Prerrequisitos
+- Terraform instalado
+- AWS CLI configurado
+
+# Desplegar infraestructura ECS
+cd infra-ecs
+terraform init
+terraform apply
+
+# Ver outputs (ALB DNS)
+terraform output
+```
+
+### Documentación
+
+- [Guía de Infraestructura ECS](infra-ecs/README.md)
+- [Análisis de Pruebas de Carga - Entrega 5](capacity-planning/pruebas_de_carga_entrega5.md)
+- [Wiki del Proyecto - Entrega 5](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-5)
 
 ---
 

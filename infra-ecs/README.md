@@ -1,6 +1,10 @@
-# Infraestructura ECS para ANB
+# Infraestructura ECS para ANB (Entrega 5)
 
-Este directorio contiene el código Terraform para desplegar la aplicación ANB utilizando contenedores en AWS ECS (Fargate), con una arquitectura de alta disponibilidad y auto-escalado.
+Este directorio contiene el código Terraform para desplegar la aplicación ANB utilizando **Amazon ECS (Fargate)**, representando la evolución a una arquitectura PaaS.
+
+> **Nota:** Esta documentación es complementaria a la [Guía de Infraestructura Base](../infra/README.md). Consulta esa guía para prerrequisitos generales (AWS CLI, llaves SSH) y configuración de entorno.
+
+Este despliegue reemplaza las instancias EC2 gestionadas manualmente (IaaS) por servicios de contenedores gestionados (PaaS), manteniendo la misma arquitectura de base de datos (RDS) y almacenamiento (S3).
 
 ## Prerrequisitos
 
