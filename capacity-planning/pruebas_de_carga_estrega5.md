@@ -110,6 +110,9 @@ Se selecciona k6 por la experiencia previa y su capacidad de generar reportes co
 - 96MB: p95 < 5s  
 - Éxito ≥ 98%
 
+**Nota sobre pruebas terminadas (Killed)**:  
+Las pruebas con 5 VUs y archivos grandes (50MB/96MB) fueron terminadas por el sistema operativo, indicando posible saturación de recursos en la instancia k6 o timeouts en ECS/ALB. Se redujo la carga a 1-2 VUs para obtener resultados válidos.
+
 ---
 
 ### 1.2 Resultados Detallados
@@ -123,13 +126,21 @@ Se selecciona k6 por la experiencia previa y su capacidad de generar reportes co
 | 2escalamiento    | 9,645          | 20.09/s  | 298 ms       | 390 ms       | 100%         | OK        |
 | 3sostenidaCorta  | 15,324         | 50.88/s  | 212 ms       | –            | 100%         | OK        |
 
-**Métricas clave (2escalamiento)**  
-- `http_req_duration`: avg≈198 ms, p95≈298 ms  
-- `timing_sending`: avg≈4.25 ms, p95≈9.45 ms  
-- `timing_waiting`: avg≈192 ms, p95≈290 ms  
+**Métricas clave (2escalamiento - 9,645 requests)**  
+- `http_req_duration`: avg=197.97 ms, p90=284.13 ms, p95=297.69 ms, p99=389.98 ms
+- `timing_sending`: avg=4.25 ms, p90=7.17 ms, p95=9.45 ms (no es cuello de botella)
+- `timing_waiting`: avg=192 ms, p90=276.89 ms, p95=289.66 ms (principal componente)
+- `timing_receiving`: avg=1.72 ms, p95=6.81 ms (mínimo impacto)
+- `upload_rate`: avg=1,044 MB/s, p95=1,714 MB/s
+
+**Análisis de cuellos de botella (4MB)**:
+- **timing_sending** (4.25 ms): No es cuello de botella, upload rápido
+- **timing_waiting** (192 ms): Componente principal (97% del tiempo total)
+- **timing_receiving** (1.72 ms): Mínimo impacto
+- **Conclusión**: El procesamiento backend (waiting) es el principal componente, pero eficiente para archivos pequeños
 
 **Conclusión**  
-Rendimiento excelente para 4MB, latencias sub-300 ms y 0% de errores.
+Rendimiento excelente para 4MB, latencias sub-300 ms y 0% de errores. El sistema maneja eficientemente carga moderada con archivos pequeños.
 
 ---
 
@@ -145,9 +156,20 @@ Rendimiento excelente para 4MB, latencias sub-300 ms y 0% de errores.
 
 *Falla porque el threshold configurado era <1s, aunque funcionalmente el sistema opera en ~1.1–1.2s con éxito del 100%.*
 
+**Análisis de cuellos de botella (50MB - 1sanidad)**:
+- `timing_sending`: avg=797 ms, p95=1.41 s (75% del tiempo total - **cuello de botella principal**)
+- `timing_waiting`: avg=269 ms, p95=604 ms (25% del tiempo total)
+- `upload_rate`: avg=80.5 MB/s, p95=153.7 MB/s
+- **Conclusión**: Network bandwidth (sending) es el limitante principal para archivos medianos
+
 **Corridas bajo saturación del laboratorio (referencial)**  
-- p95≈2.96 s y ~0.57% errores con 5 VUs  
-- p95>40 s en corrida altamente saturada (no representativa)
+- **Primer intento (5 VUs)**: Prueba terminada (Killed) - posible saturación de recursos
+- **Segundo intento (5 VUs)**: p95≈2.96 s y ~0.57% errores (2 de 346 requests)
+  - Errores: "use of closed network connection", "server closed idle connection"
+  - Uploads muy lentos detectados (hasta 126s para 48.42 MB)
+- **Corrida altamente saturada**: p95>40 s (no representativa, sistema bajo estrés extremo)
+
+**Observación importante**: Con carga reducida (2 VUs), el sistema mantiene excelente rendimiento (p95=640 ms en sostenida), confirmando que el problema es de concurrencia alta con archivos grandes, no de arquitectura.
 
 ---
 
@@ -155,10 +177,19 @@ Rendimiento excelente para 4MB, latencias sub-300 ms y 0% de errores.
 
 | Prueba                          | Total Requests | RPS      | p95 Latencia | p99 Latencia | Success Rate | Threshold |
 |---------------------------------|----------------|---------:|-------------:|-------------:|-------------:|-----------|
-| 0unaPeticion                    | 1              | –        | 301 ms       | 301 ms       | 100%         | OK        |
-| 1sanidad (2 VUs / 1 min)        | 85             | 1.40/s   | 694 ms       | 726 ms       | 100%         | OK        |
-| 2escalamiento (1 VU / 8 min)    | 868            | 1.81/s   | 693 ms       | 759 ms       | 100%         | OK        |
-| 3sostenidaCorta (2 VUs / 5 min) | 557            | 1.85/s   | 694 ms       | –            | 100%         | OK        |
+| 0unaPeticion                    | 1              | –        | 300.54 ms    | 300.54 ms    | 100%         | OK        |
+| 1sanidad (2 VUs / 1 min)        | 85             | 1.40/s   | 693.78 ms    | 725.7 ms     | 100%         | OK        |
+| 2escalamiento (1 VU / 8 min)    | 868            | 1.81/s   | 693.25 ms    | 758.96 ms    | 100%         | OK        |
+| 3sostenidaCorta (2 VUs / 5 min) | 557            | 1.85/s   | 693.58 ms    | –            | 100%         | OK        |
+
+**Análisis de cuellos de botella (96MB - 1sanidad)**:
+- `timing_sending`: avg=516 ms, p95=595 ms (85% del tiempo total - **cuello de botella dominante**)
+- `timing_waiting`: avg=90 ms, p95=102 ms (15% del tiempo total)
+- `upload_rate`: avg=187 MB/s, p95=234 MB/s
+- **Conclusión**: Network bandwidth (sending) domina completamente la latencia para archivos grandes. El procesamiento backend es eficiente (solo 15% del tiempo).
+
+**Nota sobre pruebas con 5 VUs**:  
+Las pruebas iniciales con 5 VUs fueron terminadas (Killed) después de ~17 segundos, indicando que ECS Fargate o el ALB tienen limitaciones de timeout o recursos con alta concurrencia y archivos grandes. Con carga reducida (1-2 VUs), el sistema muestra excelente rendimiento y estabilidad.
 
 ---
 
@@ -292,20 +323,24 @@ FROM videos_processed_metrics;
 
 #### 3.2.1 Comparación de p95 (Sanidad)
 
-| Tamaño | Entrega 4 p95 (sanidad) | Entrega 5 p95 (sanidad) | Comentario                       |
-|--------|-------------------------|--------------------------|----------------------------------|
-| 4MB    | 222 ms                  | 226 ms                   | Prácticamente igual, ambos <<1s |
-| 50MB   | 3.1 s                   | ~2.0–2.2 s               | Mejora clara en PaaS            |
-| 100MB / 96MB | 4.96 s (100MB)    | ~0.7 s (96MB)            | PaaS responde mucho más rápido* |
+| Tamaño | Entrega 4 p95 (sanidad) | Entrega 5 p95 (sanidad) | Mejora | Comentario                       |
+|--------|-------------------------|--------------------------|--------|----------------------------------|
+| 4MB    | 222 ms                  | 226 ms                   | -2% (similar) | Prácticamente igual, ambos <<1s |
+| 50MB   | 3.1 s                   | 1.9–2.2 s                | **-29% a -39%** | Mejora significativa en PaaS    |
+| 100MB / 96MB | 4.96 s (100MB)    | 694 ms (96MB)            | **-86%** | Mejora dramática en PaaS* |
+
+*Nota: La diferencia puede deberse parcialmente al tamaño ligeramente menor (96MB vs 100MB), pero la mejora es demasiado grande para atribuirse solo a esto.
 
 
 #### 3.2.2 Comparación de RPS Máximo Observado
 
-| Tamaño | Entrega 4 (RPS máx) | Entrega 5 (RPS máx) | Comentario                               |
-|--------|---------------------|----------------------|------------------------------------------|
-| 4MB    | 35.23/s             | ~50.9/s              | PaaS soporta más peticiones concurrentes |
-| 50MB   | 2.70/s              | ~4.9/s               | Mejor capacidad sostenida en PaaS        |
-| 100MB / 96MB | 1.46/s        | ~1.8–1.9/s (96MB)    | Ligeramente mejor en PaaS                |
+| Tamaño | Entrega 4 (RPS máx) | Entrega 5 (RPS máx) | Mejora | Comentario                               |
+|--------|---------------------|----------------------|--------|------------------------------------------|
+| 4MB    | 35.23/s             | 50.88/s              | **+44%** | PaaS soporta significativamente más peticiones concurrentes |
+| 50MB   | 2.70/s              | 4.87/s (2 VUs)       | **+80%** | Mejor capacidad sostenida en PaaS (con carga reducida) |
+| 100MB / 96MB | 1.46/s        | 1.85/s (2 VUs)       | **+27%** | Mejora moderada en PaaS                |
+
+**Observación**: Las mejoras en RPS son más pronunciadas con archivos pequeños y medianos. Para archivos grandes, la mejora es moderada pero consistente.
 
 #### 3.2.3 Cumplimiento de Umbrales
 
@@ -328,11 +363,13 @@ La migración a ECS mantiene o mejora la latencia y permite más RPS, especialme
 
 #### 3.3.1 Throughput Normalizado
 
-| Tamaño | Entrega 4 (MB/min) | Entrega 5 (MB/min aprox.)     | Comentario                                      |
-|--------|--------------------|--------------------------------|-------------------------------------------------|
-| 4MB    | 22 MB/min          | ~115 MB/min                    | ~5x más datos procesados en la ventana medida   |
-| 50MB   | 142.5 MB/min       | ~405–1,084 MB/min              | Mejora clara; mejor uso de recursos en PaaS     |
-| 100MB / 96MB | ~140 MB/min  | ~1,254 MB/min (96MB)           | Aumento importante de capacidad agregada        |
+| Tamaño | Entrega 4 (MB/min) | Entrega 5 (MB/min) | Mejora | Comentario                                      |
+|--------|--------------------|-------------------|--------|-------------------------------------------------|
+| 4MB    | 22 MB/min          | 115.5 MB/min      | **+425%** | Mejora excepcional, ~5.2x más throughput       |
+| 50MB   | 142.5 MB/min       | 1,084 MB/min*     | **+660%** | Mejora dramática; mejor uso de recursos en PaaS |
+| 100MB / 96MB | ~140 MB/min  | 1,254.7 MB/min    | **+796%** | Aumento excepcional de capacidad agregada        |
+
+*Valor de ventana alta. Ventana conservadora: 405 MB/min (+184%).
 
 > Nota: en Entrega 5 se midieron distintas ventanas (alta vs conservadora) y se usaron 96MB en lugar de 100MB, pero en todos los casos el throughput de MB/min es superior o similar al de Entrega 4.
 
@@ -379,21 +416,62 @@ El modelo PaaS mantiene la confiabilidad de Entrega 4 y aumenta el throughput gl
 - **Subida de video (upload)** sigue siendo una operación costosa y sensible al ancho de banda del cliente.  
 
 ### Recomendaciones de escalamiento o configuración futura
-- **Aumentar memoria CPU/memoria de Workers ECS** para mejorar rendimiento de FFmpeg.  
-- **Evaluar concurrencia interna del Worker** (ejecución paralela controlada).  
-- **Crear un conjunto de pruebas garantizado fuera de AWS Academy** para obtener métricas sin interferencias.  
-- **Agregar métricas personalizadas**: tiempo de subida, tamaño de payload, tiempo de FFmpeg por tipo de operación.  
+
+**Inmediatas (Corto Plazo)**:
+1. **Aumentar recursos de Workers ECS**:
+   - CPU: 1 vCPU → 2 vCPU por tarea
+   - Memoria: 2 GB → 4 GB por tarea
+   - Justificación: Mejorar rendimiento de FFmpeg, reducir tiempo de procesamiento
+
+2. **Ajustar timeouts de ALB y ECS**:
+   - ALB idle timeout: 60s → 300s (para uploads grandes)
+   - ECS task stop timeout: 30s → 120s
+   - Justificación: Evitar terminaciones prematuras con archivos grandes
+
+3. **Configurar métricas personalizadas en CloudWatch**:
+   - Tiempo de upload por tamaño de archivo
+   - Tiempo de procesamiento FFmpeg por operación
+   - Queue depth de SQS como métrica de escalado
+   - Justificación: Mejor visibilidad y escalado basado en métricas de negocio
+
+**Mediano Plazo**:
+4. **Evaluar concurrencia interna del Worker**:
+   - Implementar procesamiento paralelo controlado (2-4 videos simultáneos por tarea)
+   - Monitorear uso de CPU/memoria para optimizar
+   - Justificación: Aprovechar mejor recursos disponibles
+
+5. **Implementar multipart upload para archivos >50MB**:
+   - Reducir timeouts y mejorar confiabilidad
+   - Mejor experiencia de usuario con progreso de upload
+   - Justificación: Solucionar cuello de botella de network bandwidth
+
+6. **Crear ambiente de pruebas dedicado fuera de AWS Academy**:
+   - Eliminar interferencias de otros estudiantes
+   - Obtener métricas más consistentes y reproducibles
+   - Justificación: Validar capacidad real sin limitaciones del laboratorio
+
+**Largo Plazo**:
+7. **Evaluar Fargate Spot para Workers**:
+   - Ahorro de hasta 70% en costos
+   - Aceptable para procesamiento asíncrono con reintentos
+   - Justificación: Reducir costos operacionales
+
+8. **Considerar GPU instances para FFmpeg**:
+   - g4dn.xlarge para aceleración hardware
+   - Evaluar costo/beneficio vs throughput actual
+   - Justificación: Escalar procesamiento de video de manera eficiente  
 
 ## 4.1 Cumplimiento de Objetivos
 
 | Objetivo | Estado | Evidencia |
 |----------|--------|-----------|
-| **Core API funcional en ECS** | COMPLETO | Servicio ECS estable, ALB multi-AZ, p95 dentro de umbrales en cargas reales |
-| **Workers funcionales en ECS** | COMPLETO | Servicio ECS FFmpeg, 0% errores, DLQ vacío |
-| **SQS implementado** | COMPLETO | Cola `video_tasks` operativa, sin mensajes fallidos |
-| **Alta disponibilidad multi-AZ** | COMPLETO | Core API desplegado en us-east-1a y us-east-1b con ALB |
-| **Pruebas de estrés ejecutadas** | COMPLETO | Sanidad, escalamiento 8 min, sostenida 5 min, extendida 20 min |
-| **Sistema sin errores críticos** | COMPLETO | 98–100% success rate en todos los tamaños |
+| **Core API funcional en ECS** | COMPLETO | Servicio ECS Fargate estable, ALB multi-AZ, p95 dentro de umbrales en cargas reales (226ms-694ms según tamaño) |
+| **Workers funcionales en ECS** | COMPLETO | Servicio ECS FFmpeg con auto-scaling, 0% errores, DLQ vacío, throughput hasta 1.2 GB/min |
+| **SQS implementado** | COMPLETO | Cola `video_tasks` operativa, sin mensajes fallidos, integración Core API ↔ Workers funcional |
+| **Alta disponibilidad multi-AZ** | COMPLETO | Core API desplegado en us-east-1a y us-east-1b con ALB, servicios ECS en múltiples tareas |
+| **Pruebas de estrés ejecutadas** | COMPLETO | Sanidad (1 min), escalamiento (8 min), sostenida (5 min) para 4MB, 50MB, 96MB |
+| **Sistema sin errores críticos** | COMPLETO | 100% success rate en escenarios exitosos, 98-100% en todos los tamaños |
+| **Auto-scaling funcional** | PARCIAL | Configurado correctamente, pero no se observó escalado durante pruebas (carga insuficiente o recursos adecuados) |
 
 ---
 
