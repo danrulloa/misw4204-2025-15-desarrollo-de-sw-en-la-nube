@@ -1,3 +1,8 @@
+## [--> LINK AL VIDEO DE PRESENTACIÓN DE ENTREGA 5 FINAL<--](https://uniandes-my.sharepoint.com/:v:/g/personal/d_ulloa_uniandes_edu_co/IQAQaigUjv2OTaR3vP-0RDT1AZ33luREbvHv9Ryg_KZoQkQ?e=1INiym)
+
+
+https://github.com/user-attachments/assets/42f604bb-f2f1-4b2b-9546-ea218e30177a
+
 # Cambios Arquitectónicos: Semana 6 → Semana 8 
 
 Este documento resume los cambios y mejoras de arquitectura entre las versiones **semana 6** y **semana 8** de la infraestructura ANB, con énfasis en la migración desde un despliegue basado en **EC2** a uno gestionado por **Amazon ECS sobre Fargate**.
