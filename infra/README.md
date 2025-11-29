@@ -628,7 +628,7 @@ LOKI_URL=http://anb-public-alb-xxxxx.us-east-1.elb.amazonaws.com/loki/api/v1/pus
 
 ---
 
-## 8) Acceso a servicios
+## 7) Acceso a servicios
 
 ### URLs a través del ALB
 
@@ -660,11 +660,11 @@ echo $ALB_DNS
 
 ---
 
-## 13) Configuración de Postman para pruebas
+## 8) Configuración de Postman para pruebas
 
 Para probar la API en AWS, necesitas actualizar la colección de Postman con el DNS del ALB.
 
-### 13.1 Obtener el DNS del ALB
+### 8.1 Obtener el DNS del ALB
 
 ```bash
 cd infra
@@ -672,7 +672,7 @@ terraform output -raw alb_dns_name
 # Salida ejemplo: anb-public-alb-1947189888.us-east-1.elb.amazonaws.com
 ```
 
-### 13.2 Importar colección y environment de Postman
+### 8.2 Importar colección y environment de Postman
 
 1. **Abrir Postman Desktop o Postman Web**
 
@@ -689,7 +689,7 @@ terraform output -raw alb_dns_name
 4. **Seleccionar environment:**
    - En el dropdown superior derecho de Postman, selecciona **"ANB Basketball API - AWS Environment"**
 
-### 13.3 Actualizar `base_url` en el environment
+### 8.3 Actualizar `base_url` en el environment
 
 **Opción A: Desde Postman UI (Recomendado)**
 
@@ -719,7 +719,7 @@ terraform output -raw alb_dns_name
 4. Guarda el archivo
 5. En Postman: **Environments** → Click en **"..."** (tres puntos) → **Reload** o re-importa el archivo
 
-### 13.4 Probar la API
+### 8.4 Probar la API
 
 1. **Probar health check primero:**
    - Abre el request `GET /api/health`
@@ -732,7 +732,7 @@ terraform output -raw alb_dns_name
    - `POST /api/videos/upload` - Subir video (selecciona un archivo .mp4)
    - `GET /api/videos` - Listar mis videos
 
-### 13.5 Notas importantes
+### 8.5 Notas importantes
 
 - **Tokens**: Los tokens (`access_token`, `refresh_token`) se guardan automáticamente en el environment después de login
 - **Video file**: Para subir videos, necesitas seleccionar un archivo `.mp4` en el request `POST /api/videos/upload` (Body → form-data → `video_file`)
