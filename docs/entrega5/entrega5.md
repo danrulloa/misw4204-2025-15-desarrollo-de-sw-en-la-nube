@@ -195,3 +195,17 @@ Dentro de todas las task definitions.
 ### 9.2 Diagrama de Despliege
 
 <img width="1804" height="869" alt="fLHjRjj64FslKmnKe9NIAYhW0ZM4n0WbCwrH-SEINQC00M6udD2ioLrwTsd5AGBqLm_GdYEdo4roaivolR9aomsAo8PDpSnxyuRxPbyPYzesLTcnXIq9egCnVFhp7zWlCDTO8MG44rNLIfAqPA0tfmebmYuC89xCXwzHvsYft-cOgqBMo1WGeNvkRvbIax0eyvBMIbOn-AC3C4PnbMlLo6oYIgLVlC2bsTk3hrx_w7vSWT8P" src="https://github.com/user-attachments/assets/68862573-6af4-4ec5-8087-b65a4de9775b" />
+
+
+La documentación detallada de esta entrega se encuentra disponible en la Wiki del proyecto:
+
+- **[Wiki: Entrega 5 - Despliegue en PaaS](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-5)**
+
+Esta página en la Wiki contiene:
+- Descripción de la arquitectura ECS Fargate.
+- Diagramas de despliegue.
+- Detalles de configuración de servicios y tareas.
+- Estrategia de auto-escalado.
+
+Para ver el análisis de pruebas de carga, consulta:
+- [Análisis de Pruebas de Carga - Entrega 5](../../capacity-planning/pruebas_de_carga_entrega5.md)
