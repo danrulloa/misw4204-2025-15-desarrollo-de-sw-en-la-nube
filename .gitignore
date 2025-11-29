@@ -237,6 +237,7 @@ crash.*.log
 terraform.tfvars
 *.auto.tfvars
 *.auto.tfvars.json
+*.terraform.lock.hcl
 
 # Archivos de plan locales
 *.tfplan
