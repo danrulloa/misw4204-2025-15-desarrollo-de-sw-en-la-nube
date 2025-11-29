@@ -5,7 +5,14 @@
 **Curso:** MISW4204 - Desarrollo de Software en la Nube  
 **Universidad:** Universidad de los Andes  
 **Año:** 2025  
-**Equipo:** Daniel Ulloa, David Cruz, Frans Taboada, Nicolás Infante
+**Equipo:** 
+
+| Nombre | Correo Institucional |
+|--------|---------------------|
+| Daniel Ricardo Ulloa Ospina | d.ulloa@uniandes.edu.co |
+| David Cruz Vargas | da.cruz84@uniandes.edu.co |
+| Frans Taboada | f.taboada@uniandes.edu.co |
+| Nicolás Infante | n.infanter@uniandes.edu.co |
 
 ---
 
@@ -369,6 +376,7 @@ terraform output
 - [Guía de Infraestructura ECS](infra-ecs/README.md)
 - [Análisis de Pruebas de Carga - Entrega 5](capacity-planning/pruebas_de_carga_entrega5.md)
 - [Wiki del Proyecto - Entrega 5](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/Entrega-5)
+- [Análisis de Calidad de Código (SonarQube)](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/sonar-entrega-5)
 
 ---
 
@@ -527,22 +535,6 @@ Este proyecto utiliza **AWS Academy** para el despliegue en la nube. Las limitac
 - **v3.0.0**: Entrega 3 - Escalabilidad en la Capa Web
 - **v4.0.0**: Entrega 4 - Escalabilidad en la Capa Batch/Worker
 
----
-
-## Equipo
-
-| Nombre | Correo Institucional |
-|--------|---------------------|
-| Daniel Ricardo Ulloa Ospina | d.ulloa@uniandes.edu.co |
-| David Cruz Vargas | da.cruz84@uniandes.edu.co |
-| Frans Taboada | f.taboada@uniandes.edu.co |
-| Nicolás Infante | n.infanter@uniandes.edu.co |
 
 
 
-## 
-Este es un proyecto académico desarrollado para el curso MISW4204 - Desarrollo de Software en la Nube de la Universidad de los Andes.
-
----
-
-**Última actualización:** 16 de Noviembre 2025
