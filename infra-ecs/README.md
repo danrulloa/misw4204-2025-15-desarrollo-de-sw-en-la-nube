@@ -27,6 +27,24 @@ jwt_secret        = "un_secreto_para_tokens"
 
 > **Nota:** Nunca subas el archivo `terraform.tfvars` con credenciales reales a un repositorio público.
 
+## ⚠️ Configuración Inicial (Requerido)
+ 
+ Este servicio requiere archivos multimedia (assets) para funcionar correctamente (marca de agua, intro/outro). Estos archivos **no están incluidos en el repositorio**.
+ 
+ 1. Ve a la Wiki del proyecto: [Assets Worker](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/assets-worker)
+ 2. Descarga los archivos requeridos (`watermark.png`, `inout.mp4`, etc.).
+ 3. Colócalos en la carpeta `worker/assets/` dentro de este directorio.
+ 
+ ```bash
+ # Estructura esperada
+ worker/
+ ├── assets/
+ │   ├── watermark.png
+ │   └── inout.mp4
+ ├── ...
+ ```
+ 
+
 ## Cómo Aprovisionar (Desplegar)
 
 Sigue estos pasos en tu terminal dentro de la carpeta `infra-ecs`:

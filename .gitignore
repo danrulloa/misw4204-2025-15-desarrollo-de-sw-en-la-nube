@@ -237,6 +237,7 @@ crash.*.log
 terraform.tfvars
 *.auto.tfvars
 *.auto.tfvars.json
+*.terraform.lock.hcl
 
 # Archivos de plan locales
 *.tfplan
@@ -273,8 +274,8 @@ docker-compose.override.yml
 infra/.terraform.lock.hcl
 infra/*.json
 K6/*.mp4
-# worker/assets/*.mp4
-# worker/assets/*.png
+worker/assets/*.mp4
+worker/assets/*.png
 
 # Documentos de soporte y apoyo de entregas
 entrega3/
