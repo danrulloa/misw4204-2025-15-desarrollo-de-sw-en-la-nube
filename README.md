@@ -371,6 +371,8 @@ terraform apply
 terraform output
 ```
 
+Los assets se encuentran en [Assets Worker](https://github.com/danrulloa/misw4204-2025-15-desarrollo-de-sw-en-la-nube/wiki/assets-worker) y deben agregarse a `./worker/assets/` antes de iniciar Terraform a AWS
+
 ### Documentación
 
 - [Guía de Infraestructura ECS](infra-ecs/README.md)
